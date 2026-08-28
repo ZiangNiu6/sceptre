@@ -16,7 +16,12 @@ construct_data_frame_v2 <- function(curr_df, curr_response_result, output_amount
       spa_max_residual = NA_real_,
       spa_rate = NA_real_,
       spa_r_lr = NA_real_,
-      spa_q_lr = NA_real_
+      spa_q_lr = NA_real_,
+      statistic_id = NA_character_,
+      equation_id = NA_character_,
+      outer_dimension = NA_integer_,
+      spa_tail_geometry = NA_character_,
+      spa_experimental = NA
     )
     for (diagnostic_name in names(optional_diagnostic_types)) {
       diagnostic_present <- vapply(
@@ -43,12 +48,29 @@ construct_data_frame_v2 <- function(curr_df, curr_response_result, output_amount
     }
   }
   if (output_amount >= 3L) {
-    to_append <- lapply(curr_response_result, FUN = function(l) {
-      m <- data.table::as.data.table(matrix(l$resampling_dist, nrow = 1))
-      colnames(m) <- paste0("z_null_", seq(1L, ncol(m)))
-      m
-    }) |> data.table::rbindlist(fill = TRUE)
-    curr_df <- cbind(curr_df, to_append)
+    resampling_lengths <- vapply(
+      curr_response_result,
+      FUN = function(l) length(l$resampling_dist),
+      FUN.VALUE = integer(1)
+    )
+    max_resampling_length <- max(c(0L, resampling_lengths))
+    if (max_resampling_length > 0L) {
+      resampling_matrix <- matrix(
+        NA_real_,
+        nrow = length(curr_response_result),
+        ncol = max_resampling_length
+      )
+      for (i in seq_along(curr_response_result)) {
+        if (resampling_lengths[i] > 0L) {
+          resampling_matrix[i, seq_len(resampling_lengths[i])] <-
+            curr_response_result[[i]]$resampling_dist
+        }
+      }
+      colnames(resampling_matrix) <- paste0(
+        "z_null_", seq_len(max_resampling_length)
+      )
+      curr_df <- cbind(curr_df, data.table::as.data.table(resampling_matrix))
+    }
   }
   return(curr_df)
 }

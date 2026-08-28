@@ -143,6 +143,9 @@ run_crt_in_memory_v2 <- function(response_matrix, grna_assignments, covariate_ma
   response_ids <- unique(response_grna_group_pairs$response_id)
   fit_parametric_curve <- (resampling_approximation == "skew_normal")
   use_crt_spa <- (resampling_approximation == "crt_spa")
+  use_crt_spa_always <- (resampling_approximation == "crt_spa_always")
+  use_crt_spa_empirical <- (resampling_approximation == "crt_spa_empirical")
+  use_crt_spa_empirical_always <- (resampling_approximation == "crt_spa_empirical_always")
 
   # 1. subset covariate matrix to cells_in_use and then to nt cells (if applicable)
   covariate_matrix <- covariate_matrix[cells_in_use,,drop=FALSE]
@@ -225,14 +228,18 @@ run_crt_in_memory_v2 <- function(response_matrix, grna_assignments, covariate_ma
       # 8. call the low-level analysis function
       if (run_outer_regression) {
         curr_response_result <- crt_glm_factored_out(
-          B1, B2, B3, fit_parametric_curve, use_crt_spa, output_amount,
+          B1, B2, B3, fit_parametric_curve, use_crt_spa, use_crt_spa_always,
+          use_crt_spa_empirical,
+          use_crt_spa_empirical_always, output_amount,
           response_ids, response_precomputations, covariate_matrix,
           get_idx_f, curr_grna_group, subset_to_nt_cells, all_nt_idxs,
           response_matrix, side_code, cells_in_use
         )
       } else {
         curr_response_result <- discovery_ntcells_crt(
-          B1, B2, B3, fit_parametric_curve, use_crt_spa, output_amount, get_idx_f,
+          B1, B2, B3, fit_parametric_curve, use_crt_spa, use_crt_spa_always,
+          use_crt_spa_empirical,
+          use_crt_spa_empirical_always, output_amount, get_idx_f,
           response_ids, covariate_matrix, curr_grna_group, all_nt_idxs,
           response_matrix, side_code, cells_in_use
         )

@@ -319,7 +319,10 @@ import_data_from_cellranger_use_ondisc <- function(directories, moi, grna_target
 
   # 1. call the corresponding ondisc function
   vector_supplied <- "vector_id" %in% colnames(grna_target_data_frame)
-  out <- ondisc::create_odm_from_cellranger(
+  create_odm_from_cellranger <- .get_ondisc_function(
+    "create_odm_from_cellranger"
+  )
+  out <- create_odm_from_cellranger(
     directories_to_load = directories,
     directory_to_write = directory_to_write,
     write_cellwise_covariates = FALSE,

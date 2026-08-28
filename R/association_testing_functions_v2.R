@@ -107,7 +107,9 @@ discovery_ntcells_perm_test <- function(synthetic_idxs, B1, B2, B3, fit_parametr
 
 
 # workhorse function 3: crt, glm factored out
-crt_glm_factored_out <- function(B1, B2, B3, fit_parametric_curve, use_crt_spa, output_amount,
+crt_glm_factored_out <- function(B1, B2, B3, fit_parametric_curve, use_crt_spa, use_crt_spa_always,
+                                 use_crt_spa_empirical,
+                                 use_crt_spa_empirical_always, output_amount,
                                  response_ids, response_precomputations, covariate_matrix,
                                  get_idx_f, curr_grna_group, subset_to_nt_cells, all_nt_idxs,
                                  response_matrix, side_code, cells_in_use) {
@@ -121,7 +123,11 @@ crt_glm_factored_out <- function(B1, B2, B3, fit_parametric_curve, use_crt_spa, 
     covariate_matrix = covariate_matrix,
     return_fitted_values = TRUE
   )
-  synthetic_idxs <- crt_index_sampler_fast(fitted_probabilities = fitted_probabilities, B = B1 + B2 + B3)
+  synthetic_idxs <- if (use_crt_spa_always || use_crt_spa_empirical_always) {
+    NULL
+  } else {
+    crt_index_sampler_fast(fitted_probabilities = fitted_probabilities, B = B1 + B2 + B3)
+  }
   # loop over genes
   for (i in seq_along(response_ids)) {
     curr_response_id <- response_ids[i]
@@ -140,7 +146,10 @@ crt_glm_factored_out <- function(B1, B2, B3, fit_parametric_curve, use_crt_spa, 
       covariate_matrix = covariate_matrix,
       fitted_coefs = response_precomputations[[curr_response_id]]$fitted_coefs,
       theta = response_precomputations[[curr_response_id]]$theta,
-      full_test_stat = TRUE
+      # SPA-always modes avoid the dense D matrix; the information version
+      # uses b as its weight vector and works directly with Z.
+      full_test_stat = !(use_crt_spa_always || use_crt_spa_empirical ||
+        use_crt_spa_empirical_always)
     )
     # run the association test
     if (use_crt_spa) {
@@ -161,6 +170,84 @@ crt_glm_factored_out <- function(B1, B2, B3, fit_parametric_curve, use_crt_spa, 
         return_resampling_dist = (output_amount == 3L),
         side_code = side_code
       )
+    } else if (use_crt_spa_always) {
+      result <- run_low_level_test_full_crt_spa_always_v1(
+        y = expression_vector,
+        mu = pieces_precomp$mu,
+        a = pieces_precomp$a,
+        w = pieces_precomp$b,
+        Z = covariate_matrix,
+        fitted_probabilities = fitted_probabilities,
+        trt_idxs = trt_idxs,
+        n_trt = n_trt,
+        side_code = side_code,
+        max_iterations = 50L
+      )
+      if (isTRUE(result$needs_empirical_fallback)) {
+        if (is.null(synthetic_idxs)) {
+          synthetic_idxs <- crt_index_sampler_fast(
+            fitted_probabilities = fitted_probabilities,
+            B = B2
+          )
+        }
+        result <- finalize_low_level_test_crt_spa_fallback_v1(
+          a = pieces_precomp$a,
+          w = pieces_precomp$b,
+          Z = covariate_matrix,
+          synthetic_idxs = synthetic_idxs,
+          B2 = B2,
+          return_resampling_dist = (output_amount == 3L),
+          side_code = side_code,
+          spa_attempt_result = result
+        )
+      } else if (output_amount == 3L && is.null(result$resampling_dist)) {
+        result$resampling_dist <- numeric(0)
+      }
+    } else if (use_crt_spa_empirical) {
+      result <- run_low_level_test_full_crt_spa_empirical_v1(
+        y = expression_vector,
+        mu = pieces_precomp$mu,
+        a = pieces_precomp$a,
+        fitted_probabilities = fitted_probabilities,
+        trt_idxs = trt_idxs,
+        n_trt = n_trt,
+        synthetic_idxs = synthetic_idxs,
+        B1 = B1,
+        B2 = B2,
+        return_resampling_dist = (output_amount == 3L),
+        side_code = side_code,
+        max_iterations = 60L
+      )
+    } else if (use_crt_spa_empirical_always) {
+      result <- run_low_level_test_full_crt_spa_empirical_always_v1(
+        y = expression_vector,
+        mu = pieces_precomp$mu,
+        a = pieces_precomp$a,
+        fitted_probabilities = fitted_probabilities,
+        trt_idxs = trt_idxs,
+        n_trt = n_trt,
+        side_code = side_code,
+        max_iterations = 60L
+      )
+      if (isTRUE(result$needs_empirical_fallback)) {
+        if (is.null(synthetic_idxs)) {
+          synthetic_idxs <- crt_index_sampler_fast(
+            fitted_probabilities = fitted_probabilities,
+            B = B2
+          )
+        }
+        result <- finalize_low_level_test_empirical_crt_fallback_v1(
+          a = pieces_precomp$a,
+          fitted_probabilities = fitted_probabilities,
+          synthetic_idxs = synthetic_idxs,
+          B2 = B2,
+          return_resampling_dist = (output_amount == 3L),
+          side_code = side_code,
+          spa_attempt_result = result
+        )
+      } else if (output_amount == 3L && is.null(result$resampling_dist)) {
+        result$resampling_dist <- numeric(0)
+      }
     } else {
       result <- run_low_level_test_full_v4(
         y = expression_vector,
@@ -184,7 +271,9 @@ crt_glm_factored_out <- function(B1, B2, B3, fit_parametric_curve, use_crt_spa, 
 }
 
 # workhorse function 4: crt, glm run inside
-discovery_ntcells_crt <- function(B1, B2, B3, fit_parametric_curve, use_crt_spa, output_amount, get_idx_f, response_ids,
+discovery_ntcells_crt <- function(B1, B2, B3, fit_parametric_curve, use_crt_spa, use_crt_spa_always,
+                                  use_crt_spa_empirical,
+                                  use_crt_spa_empirical_always, output_amount, get_idx_f, response_ids,
                                   covariate_matrix, curr_grna_group, all_nt_idxs, response_matrix,
                                   side_code, cells_in_use) {
   result_list_inner <- vector(mode = "list", length = length(response_ids))
@@ -201,7 +290,11 @@ discovery_ntcells_crt <- function(B1, B2, B3, fit_parametric_curve, use_crt_spa,
     covariate_matrix = curr_covariate_matrix,
     return_fitted_values = TRUE
   )
-  synthetic_idxs <- crt_index_sampler_fast(fitted_probabilities = fitted_probabilities, B = B1 + B2 + B3)
+  synthetic_idxs <- if (use_crt_spa_always || use_crt_spa_empirical_always) {
+    NULL
+  } else {
+    crt_index_sampler_fast(fitted_probabilities = fitted_probabilities, B = B1 + B2 + B3)
+  }
   # loop over the response ids
   for (i in seq_along(response_ids)) {
     curr_response_id <- response_ids[i]
@@ -225,7 +318,10 @@ discovery_ntcells_crt <- function(B1, B2, B3, fit_parametric_curve, use_crt_spa,
       covariate_matrix = curr_covariate_matrix,
       fitted_coefs = response_precomp$fitted_coefs,
       theta = response_precomp$theta,
-      full_test_stat = TRUE
+      # SPA-always modes avoid the dense D matrix; the information version
+      # uses b as its weight vector and works directly with Z.
+      full_test_stat = !(use_crt_spa_always || use_crt_spa_empirical ||
+        use_crt_spa_empirical_always)
     )
     # run the association test
     if (use_crt_spa) {
@@ -246,6 +342,84 @@ discovery_ntcells_crt <- function(B1, B2, B3, fit_parametric_curve, use_crt_spa,
         return_resampling_dist = (output_amount == 3L),
         side_code = side_code
       )
+    } else if (use_crt_spa_always) {
+      result <- run_low_level_test_full_crt_spa_always_v1(
+        y = curr_expression_vector,
+        mu = pieces_precomp$mu,
+        a = pieces_precomp$a,
+        w = pieces_precomp$b,
+        Z = curr_covariate_matrix,
+        fitted_probabilities = fitted_probabilities,
+        trt_idxs = trt_idxs,
+        n_trt = n_trt,
+        side_code = side_code,
+        max_iterations = 50L
+      )
+      if (isTRUE(result$needs_empirical_fallback)) {
+        if (is.null(synthetic_idxs)) {
+          synthetic_idxs <- crt_index_sampler_fast(
+            fitted_probabilities = fitted_probabilities,
+            B = B2
+          )
+        }
+        result <- finalize_low_level_test_crt_spa_fallback_v1(
+          a = pieces_precomp$a,
+          w = pieces_precomp$b,
+          Z = curr_covariate_matrix,
+          synthetic_idxs = synthetic_idxs,
+          B2 = B2,
+          return_resampling_dist = (output_amount == 3L),
+          side_code = side_code,
+          spa_attempt_result = result
+        )
+      } else if (output_amount == 3L && is.null(result$resampling_dist)) {
+        result$resampling_dist <- numeric(0)
+      }
+    } else if (use_crt_spa_empirical) {
+      result <- run_low_level_test_full_crt_spa_empirical_v1(
+        y = curr_expression_vector,
+        mu = pieces_precomp$mu,
+        a = pieces_precomp$a,
+        fitted_probabilities = fitted_probabilities,
+        trt_idxs = trt_idxs,
+        n_trt = n_trt,
+        synthetic_idxs = synthetic_idxs,
+        B1 = B1,
+        B2 = B2,
+        return_resampling_dist = (output_amount == 3L),
+        side_code = side_code,
+        max_iterations = 60L
+      )
+    } else if (use_crt_spa_empirical_always) {
+      result <- run_low_level_test_full_crt_spa_empirical_always_v1(
+        y = curr_expression_vector,
+        mu = pieces_precomp$mu,
+        a = pieces_precomp$a,
+        fitted_probabilities = fitted_probabilities,
+        trt_idxs = trt_idxs,
+        n_trt = n_trt,
+        side_code = side_code,
+        max_iterations = 60L
+      )
+      if (isTRUE(result$needs_empirical_fallback)) {
+        if (is.null(synthetic_idxs)) {
+          synthetic_idxs <- crt_index_sampler_fast(
+            fitted_probabilities = fitted_probabilities,
+            B = B2
+          )
+        }
+        result <- finalize_low_level_test_empirical_crt_fallback_v1(
+          a = pieces_precomp$a,
+          fitted_probabilities = fitted_probabilities,
+          synthetic_idxs = synthetic_idxs,
+          B2 = B2,
+          return_resampling_dist = (output_amount == 3L),
+          side_code = side_code,
+          spa_attempt_result = result
+        )
+      } else if (output_amount == 3L && is.null(result$resampling_dist)) {
+        result$resampling_dist <- numeric(0)
+      }
     } else {
       result <- run_low_level_test_full_v4(
         y = curr_expression_vector,

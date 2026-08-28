@@ -35,6 +35,7 @@ test_that("the supported ondisc API provides every required function", {
     "compute_n_trt_cells_matrix_ondisc",
     "compute_n_ok_pairs_ondisc",
     "compute_nt_nonzero_matrix_and_n_ok_pairs_ondisc",
+    "create_odm_from_cellranger",
     "create_odm_from_r_matrix_internal"
   )
   resolved_functions <- lapply(required_functions, .get_ondisc_function)

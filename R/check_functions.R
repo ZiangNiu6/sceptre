@@ -202,11 +202,20 @@ check_set_analysis_parameters <- function(sceptre_object, formula_object, respon
   }
 
   # 11. verify resampling_approximation acceptable
-  if (!(resampling_approximation %in% c("skew_normal", "no_approximation", "crt_spa"))) {
-    stop("`resampling_approximation` must be set to 'skew_normal', 'no_approximation', or 'crt_spa'.")
+  if (!(resampling_approximation %in% c("skew_normal", "no_approximation", "crt_spa", "crt_spa_always", "crt_spa_empirical", "crt_spa_empirical_always"))) {
+    stop("`resampling_approximation` must be set to 'skew_normal', 'no_approximation', 'crt_spa', 'crt_spa_always', 'crt_spa_empirical', or 'crt_spa_empirical_always'.")
   }
   if (resampling_approximation == "crt_spa" && resampling_mechanism != "crt") {
     stop("`resampling_approximation = 'crt_spa'` is available only when `resampling_mechanism = 'crt'`.")
+  }
+  if (resampling_approximation == "crt_spa_always" && resampling_mechanism != "crt") {
+    stop("`resampling_approximation = 'crt_spa_always'` is available only when `resampling_mechanism = 'crt'`.")
+  }
+  if (resampling_approximation == "crt_spa_empirical" && resampling_mechanism != "crt") {
+    stop("`resampling_approximation = 'crt_spa_empirical'` is available only when `resampling_mechanism = 'crt'`.")
+  }
+  if (resampling_approximation == "crt_spa_empirical_always" && resampling_mechanism != "crt") {
+    stop("`resampling_approximation = 'crt_spa_empirical_always'` is available only when `resampling_mechanism = 'crt'`.")
   }
 
   return(NULL)

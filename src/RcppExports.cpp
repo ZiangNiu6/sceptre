@@ -68,6 +68,23 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// crt_empirical_spa_full_cpp
+Rcpp::List crt_empirical_spa_full_cpp(const Rcpp::NumericVector& a, const Rcpp::NumericVector& propensity, const double target, const int score_sign, const double tolerance, const int max_iterations, const int max_backtracks);
+RcppExport SEXP _sceptre_crt_empirical_spa_full_cpp(SEXP aSEXP, SEXP propensitySEXP, SEXP targetSEXP, SEXP score_signSEXP, SEXP toleranceSEXP, SEXP max_iterationsSEXP, SEXP max_backtracksSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const Rcpp::NumericVector& >::type a(aSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::NumericVector& >::type propensity(propensitySEXP);
+    Rcpp::traits::input_parameter< const double >::type target(targetSEXP);
+    Rcpp::traits::input_parameter< const int >::type score_sign(score_signSEXP);
+    Rcpp::traits::input_parameter< const double >::type tolerance(toleranceSEXP);
+    Rcpp::traits::input_parameter< const int >::type max_iterations(max_iterationsSEXP);
+    Rcpp::traits::input_parameter< const int >::type max_backtracks(max_backtracksSEXP);
+    rcpp_result_gen = Rcpp::wrap(crt_empirical_spa_full_cpp(a, propensity, target, score_sign, tolerance, max_iterations, max_backtracks));
+    return rcpp_result_gen;
+END_RCPP
+}
 // crt_spa_full_cpp
 Rcpp::List crt_spa_full_cpp(const Rcpp::NumericVector& a, const Rcpp::NumericVector& w, const Rcpp::NumericMatrix& Z, const Rcpp::NumericVector& propensity, const double target, const int score_sign, const double tolerance, const int max_iterations);
 RcppExport SEXP _sceptre_crt_spa_full_cpp(SEXP aSEXP, SEXP wSEXP, SEXP ZSEXP, SEXP propensitySEXP, SEXP targetSEXP, SEXP score_signSEXP, SEXP toleranceSEXP, SEXP max_iterationsSEXP) {
@@ -159,6 +176,129 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< bool >::type return_resampling_dist(return_resampling_distSEXP);
     Rcpp::traits::input_parameter< int >::type side_code(side_codeSEXP);
     rcpp_result_gen = Rcpp::wrap(run_low_level_test_full_crt_spa_v1(y, mu, a, w, D, Z, fitted_probabilities, trt_idxs, n_trt, use_all_cells, synthetic_idxs, B1, B2, return_resampling_dist, side_code));
+    return rcpp_result_gen;
+END_RCPP
+}
+// run_low_level_test_full_crt_spa_always_v1
+SEXP run_low_level_test_full_crt_spa_always_v1(NumericVector y, NumericVector mu, NumericVector a, NumericVector w, NumericMatrix Z, NumericVector fitted_probabilities, IntegerVector trt_idxs, int n_trt, int side_code, int max_iterations);
+RcppExport SEXP _sceptre_run_low_level_test_full_crt_spa_always_v1(SEXP ySEXP, SEXP muSEXP, SEXP aSEXP, SEXP wSEXP, SEXP ZSEXP, SEXP fitted_probabilitiesSEXP, SEXP trt_idxsSEXP, SEXP n_trtSEXP, SEXP side_codeSEXP, SEXP max_iterationsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type y(ySEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type mu(muSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type a(aSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type w(wSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type Z(ZSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type fitted_probabilities(fitted_probabilitiesSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type trt_idxs(trt_idxsSEXP);
+    Rcpp::traits::input_parameter< int >::type n_trt(n_trtSEXP);
+    Rcpp::traits::input_parameter< int >::type side_code(side_codeSEXP);
+    Rcpp::traits::input_parameter< int >::type max_iterations(max_iterationsSEXP);
+    rcpp_result_gen = Rcpp::wrap(run_low_level_test_full_crt_spa_always_v1(y, mu, a, w, Z, fitted_probabilities, trt_idxs, n_trt, side_code, max_iterations));
+    return rcpp_result_gen;
+END_RCPP
+}
+// finalize_low_level_test_crt_spa_fallback_v1
+SEXP finalize_low_level_test_crt_spa_fallback_v1(NumericVector a, NumericVector w, NumericMatrix Z, SEXP synthetic_idxs, int B2, bool return_resampling_dist, int side_code, List spa_attempt_result);
+RcppExport SEXP _sceptre_finalize_low_level_test_crt_spa_fallback_v1(SEXP aSEXP, SEXP wSEXP, SEXP ZSEXP, SEXP synthetic_idxsSEXP, SEXP B2SEXP, SEXP return_resampling_distSEXP, SEXP side_codeSEXP, SEXP spa_attempt_resultSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type a(aSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type w(wSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type Z(ZSEXP);
+    Rcpp::traits::input_parameter< SEXP >::type synthetic_idxs(synthetic_idxsSEXP);
+    Rcpp::traits::input_parameter< int >::type B2(B2SEXP);
+    Rcpp::traits::input_parameter< bool >::type return_resampling_dist(return_resampling_distSEXP);
+    Rcpp::traits::input_parameter< int >::type side_code(side_codeSEXP);
+    Rcpp::traits::input_parameter< List >::type spa_attempt_result(spa_attempt_resultSEXP);
+    rcpp_result_gen = Rcpp::wrap(finalize_low_level_test_crt_spa_fallback_v1(a, w, Z, synthetic_idxs, B2, return_resampling_dist, side_code, spa_attempt_result));
+    return rcpp_result_gen;
+END_RCPP
+}
+// compute_observed_empirical_crt_statistic_v1
+double compute_observed_empirical_crt_statistic_v1(const NumericVector& a, const NumericVector& fitted_probabilities, const IntegerVector& trt_idxs);
+RcppExport SEXP _sceptre_compute_observed_empirical_crt_statistic_v1(SEXP aSEXP, SEXP fitted_probabilitiesSEXP, SEXP trt_idxsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const NumericVector& >::type a(aSEXP);
+    Rcpp::traits::input_parameter< const NumericVector& >::type fitted_probabilities(fitted_probabilitiesSEXP);
+    Rcpp::traits::input_parameter< const IntegerVector& >::type trt_idxs(trt_idxsSEXP);
+    rcpp_result_gen = Rcpp::wrap(compute_observed_empirical_crt_statistic_v1(a, fitted_probabilities, trt_idxs));
+    return rcpp_result_gen;
+END_RCPP
+}
+// compute_null_empirical_crt_statistics_v1
+std::vector<double> compute_null_empirical_crt_statistics_v1(const NumericVector& a, const NumericVector& fitted_probabilities, const int start_pos, const int B, SEXP synthetic_idxs);
+RcppExport SEXP _sceptre_compute_null_empirical_crt_statistics_v1(SEXP aSEXP, SEXP fitted_probabilitiesSEXP, SEXP start_posSEXP, SEXP BSEXP, SEXP synthetic_idxsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const NumericVector& >::type a(aSEXP);
+    Rcpp::traits::input_parameter< const NumericVector& >::type fitted_probabilities(fitted_probabilitiesSEXP);
+    Rcpp::traits::input_parameter< const int >::type start_pos(start_posSEXP);
+    Rcpp::traits::input_parameter< const int >::type B(BSEXP);
+    Rcpp::traits::input_parameter< SEXP >::type synthetic_idxs(synthetic_idxsSEXP);
+    rcpp_result_gen = Rcpp::wrap(compute_null_empirical_crt_statistics_v1(a, fitted_probabilities, start_pos, B, synthetic_idxs));
+    return rcpp_result_gen;
+END_RCPP
+}
+// run_low_level_test_full_crt_spa_empirical_v1
+SEXP run_low_level_test_full_crt_spa_empirical_v1(NumericVector y, NumericVector mu, NumericVector a, NumericVector fitted_probabilities, IntegerVector trt_idxs, int n_trt, SEXP synthetic_idxs, int B1, int B2, bool return_resampling_dist, int side_code, int max_iterations);
+RcppExport SEXP _sceptre_run_low_level_test_full_crt_spa_empirical_v1(SEXP ySEXP, SEXP muSEXP, SEXP aSEXP, SEXP fitted_probabilitiesSEXP, SEXP trt_idxsSEXP, SEXP n_trtSEXP, SEXP synthetic_idxsSEXP, SEXP B1SEXP, SEXP B2SEXP, SEXP return_resampling_distSEXP, SEXP side_codeSEXP, SEXP max_iterationsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type y(ySEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type mu(muSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type a(aSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type fitted_probabilities(fitted_probabilitiesSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type trt_idxs(trt_idxsSEXP);
+    Rcpp::traits::input_parameter< int >::type n_trt(n_trtSEXP);
+    Rcpp::traits::input_parameter< SEXP >::type synthetic_idxs(synthetic_idxsSEXP);
+    Rcpp::traits::input_parameter< int >::type B1(B1SEXP);
+    Rcpp::traits::input_parameter< int >::type B2(B2SEXP);
+    Rcpp::traits::input_parameter< bool >::type return_resampling_dist(return_resampling_distSEXP);
+    Rcpp::traits::input_parameter< int >::type side_code(side_codeSEXP);
+    Rcpp::traits::input_parameter< int >::type max_iterations(max_iterationsSEXP);
+    rcpp_result_gen = Rcpp::wrap(run_low_level_test_full_crt_spa_empirical_v1(y, mu, a, fitted_probabilities, trt_idxs, n_trt, synthetic_idxs, B1, B2, return_resampling_dist, side_code, max_iterations));
+    return rcpp_result_gen;
+END_RCPP
+}
+// run_low_level_test_full_crt_spa_empirical_always_v1
+SEXP run_low_level_test_full_crt_spa_empirical_always_v1(NumericVector y, NumericVector mu, NumericVector a, NumericVector fitted_probabilities, IntegerVector trt_idxs, int n_trt, int side_code, int max_iterations);
+RcppExport SEXP _sceptre_run_low_level_test_full_crt_spa_empirical_always_v1(SEXP ySEXP, SEXP muSEXP, SEXP aSEXP, SEXP fitted_probabilitiesSEXP, SEXP trt_idxsSEXP, SEXP n_trtSEXP, SEXP side_codeSEXP, SEXP max_iterationsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type y(ySEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type mu(muSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type a(aSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type fitted_probabilities(fitted_probabilitiesSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type trt_idxs(trt_idxsSEXP);
+    Rcpp::traits::input_parameter< int >::type n_trt(n_trtSEXP);
+    Rcpp::traits::input_parameter< int >::type side_code(side_codeSEXP);
+    Rcpp::traits::input_parameter< int >::type max_iterations(max_iterationsSEXP);
+    rcpp_result_gen = Rcpp::wrap(run_low_level_test_full_crt_spa_empirical_always_v1(y, mu, a, fitted_probabilities, trt_idxs, n_trt, side_code, max_iterations));
+    return rcpp_result_gen;
+END_RCPP
+}
+// finalize_low_level_test_empirical_crt_fallback_v1
+SEXP finalize_low_level_test_empirical_crt_fallback_v1(NumericVector a, NumericVector fitted_probabilities, SEXP synthetic_idxs, int B2, bool return_resampling_dist, int side_code, List spa_attempt_result);
+RcppExport SEXP _sceptre_finalize_low_level_test_empirical_crt_fallback_v1(SEXP aSEXP, SEXP fitted_probabilitiesSEXP, SEXP synthetic_idxsSEXP, SEXP B2SEXP, SEXP return_resampling_distSEXP, SEXP side_codeSEXP, SEXP spa_attempt_resultSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type a(aSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type fitted_probabilities(fitted_probabilitiesSEXP);
+    Rcpp::traits::input_parameter< SEXP >::type synthetic_idxs(synthetic_idxsSEXP);
+    Rcpp::traits::input_parameter< int >::type B2(B2SEXP);
+    Rcpp::traits::input_parameter< bool >::type return_resampling_dist(return_resampling_distSEXP);
+    Rcpp::traits::input_parameter< int >::type side_code(side_codeSEXP);
+    Rcpp::traits::input_parameter< List >::type spa_attempt_result(spa_attempt_resultSEXP);
+    rcpp_result_gen = Rcpp::wrap(finalize_low_level_test_empirical_crt_fallback_v1(a, fitted_probabilities, synthetic_idxs, B2, return_resampling_dist, side_code, spa_attempt_result));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -478,12 +618,20 @@ static const R_CallMethodDef CallEntries[] = {
     {"_sceptre_print_synth_idx_list_row", (DL_FUNC) &_sceptre_print_synth_idx_list_row, 2},
     {"_sceptre_test", (DL_FUNC) &_sceptre_test, 0},
     {"_sceptre_estimate_theta", (DL_FUNC) &_sceptre_estimate_theta, 5},
+    {"_sceptre_crt_empirical_spa_full_cpp", (DL_FUNC) &_sceptre_crt_empirical_spa_full_cpp, 7},
     {"_sceptre_crt_spa_full_cpp", (DL_FUNC) &_sceptre_crt_spa_full_cpp, 8},
     {"_sceptre_fisher_yates_samlper", (DL_FUNC) &_sceptre_fisher_yates_samlper, 3},
     {"_sceptre_hybrid_fisher_iwor_sampler", (DL_FUNC) &_sceptre_hybrid_fisher_iwor_sampler, 4},
     {"_sceptre_crt_index_sampler", (DL_FUNC) &_sceptre_crt_index_sampler, 2},
     {"_sceptre_crt_index_sampler_fast", (DL_FUNC) &_sceptre_crt_index_sampler_fast, 2},
     {"_sceptre_run_low_level_test_full_crt_spa_v1", (DL_FUNC) &_sceptre_run_low_level_test_full_crt_spa_v1, 15},
+    {"_sceptre_run_low_level_test_full_crt_spa_always_v1", (DL_FUNC) &_sceptre_run_low_level_test_full_crt_spa_always_v1, 10},
+    {"_sceptre_finalize_low_level_test_crt_spa_fallback_v1", (DL_FUNC) &_sceptre_finalize_low_level_test_crt_spa_fallback_v1, 8},
+    {"_sceptre_compute_observed_empirical_crt_statistic_v1", (DL_FUNC) &_sceptre_compute_observed_empirical_crt_statistic_v1, 3},
+    {"_sceptre_compute_null_empirical_crt_statistics_v1", (DL_FUNC) &_sceptre_compute_null_empirical_crt_statistics_v1, 5},
+    {"_sceptre_run_low_level_test_full_crt_spa_empirical_v1", (DL_FUNC) &_sceptre_run_low_level_test_full_crt_spa_empirical_v1, 12},
+    {"_sceptre_run_low_level_test_full_crt_spa_empirical_always_v1", (DL_FUNC) &_sceptre_run_low_level_test_full_crt_spa_empirical_always_v1, 8},
+    {"_sceptre_finalize_low_level_test_empirical_crt_fallback_v1", (DL_FUNC) &_sceptre_finalize_low_level_test_empirical_crt_fallback_v1, 7},
     {"_sceptre_run_low_level_test_full_v4", (DL_FUNC) &_sceptre_run_low_level_test_full_v4, 15},
     {"_sceptre_compute_tolerance_cpp", (DL_FUNC) &_sceptre_compute_tolerance_cpp, 2},
     {"_sceptre_run_reduced_em_algo_cpp", (DL_FUNC) &_sceptre_run_reduced_em_algo_cpp, 5},

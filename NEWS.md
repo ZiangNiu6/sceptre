@@ -1,3 +1,23 @@
+# sceptre development version
+
+- Added an opt-in `resampling_approximation = "crt_spa_empirical"` mode for
+  conditional randomization tests. The mode recomputes the empirical
+  studentizer for the observed assignment and every resample, uses the exact
+  two-moment product-Bernoulli CGF with a full two-dimensional line-search
+  Newton solve in screened tails, and falls back to an independent empirical
+  CRT bank on numerical failure. Its directional tangent-half-space tail
+  conversion is explicitly marked experimental.
+
+- Added `resampling_approximation = "crt_spa_empirical_always"`, which attempts
+  the empirically studentized full-Newton SPA for every CRT pair. It skips the
+  central empirical screen and creates a shared 4,999-resample fallback bank
+  lazily only when one or more SPA attempts fail.
+
+- Added `resampling_approximation = "crt_spa_always"`, which attempts the
+  information-studentized full-Newton CRT-SPA for every QC-passing pair without
+  a B1 screen. It creates one shared 4,999-resample fallback bank per gRNA
+  group only after an SPA attempt fails.
+
 # sceptre 0.10.2 (2025-01-17)
 
 Version 0.10.2 is a minor update in which we replaced the larger, real example
