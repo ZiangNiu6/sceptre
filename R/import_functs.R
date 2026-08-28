@@ -28,15 +28,18 @@
 #' )
 #'
 #' # 2. initialize an ondisc-backed sceptre_object from R objects
-#' sceptre_object <- import_data(
-#'   response_matrix = lowmoi_example_data$response_matrix,
-#'   grna_matrix = lowmoi_example_data$grna_matrix,
-#'   grna_target_data_frame = lowmoi_example_data$grna_target_data_frame,
-#'   extra_covariates = lowmoi_example_data$extra_covariates,
-#'   moi = "low",
-#'   use_ondisc = TRUE,
-#'   directory_to_write = tempdir()
-#' )
+#' if (requireNamespace("ondisc", quietly = TRUE) &&
+#'     utils::packageVersion("ondisc") >= package_version("1.2.0")) {
+#'   sceptre_object <- import_data(
+#'     response_matrix = lowmoi_example_data$response_matrix,
+#'     grna_matrix = lowmoi_example_data$grna_matrix,
+#'     grna_target_data_frame = lowmoi_example_data$grna_target_data_frame,
+#'     extra_covariates = lowmoi_example_data$extra_covariates,
+#'     moi = "low",
+#'     use_ondisc = TRUE,
+#'     directory_to_write = tempdir()
+#'   )
+#' }
 import_data <- function(response_matrix, grna_matrix, grna_target_data_frame, moi, extra_covariates = data.frame(),
                         response_names = NA_character_, use_ondisc = FALSE, directory_to_write = NULL) {
   if (use_ondisc) { # use ondisc
@@ -155,13 +158,16 @@ import_data_use_ondisc <- function(response_matrix, grna_matrix, grna_target_dat
 #' )
 #'
 #' # 2. create an ondisc-backed sceptre_object from Cell Ranger output
-#' sceptre_object <- import_data_from_cellranger(
-#'   directories = directories,
-#'   moi = "high",
-#'   grna_target_data_frame = grna_target_data_frame_highmoi,
-#'   use_ondisc = TRUE,
-#'   directory_to_write = tempdir()
-#' )
+#' if (requireNamespace("ondisc", quietly = TRUE) &&
+#'     utils::packageVersion("ondisc") >= package_version("1.2.0")) {
+#'   sceptre_object <- import_data_from_cellranger(
+#'     directories = directories,
+#'     moi = "high",
+#'     grna_target_data_frame = grna_target_data_frame_highmoi,
+#'     use_ondisc = TRUE,
+#'     directory_to_write = tempdir()
+#'   )
+#' }
 import_data_from_cellranger <- function(directories, moi, grna_target_data_frame, extra_covariates = data.frame(), use_ondisc = FALSE, directory_to_write = NULL) {
   # take cases on use_ondisc
   if (!use_ondisc) {
@@ -520,12 +526,15 @@ get_mtx_metadata <- function(mtx_file, col_id = c("n_features", "n_cells", "n_no
 
 
 write_matrices_to_disk <- function(response_matrix, grna_matrix, directory_to_write, integer_id) {
-  response_matrix <- ondisc:::create_odm_from_r_matrix_internal(
+  create_odm_from_r_matrix_internal <- .get_ondisc_function(
+    "create_odm_from_r_matrix_internal"
+  )
+  response_matrix <- create_odm_from_r_matrix_internal(
     mat = response_matrix,
     file_to_write = paste0(directory_to_write, "/response.odm"),
     integer_id = integer_id
   )
-  grna_matrix <- ondisc:::create_odm_from_r_matrix_internal(
+  grna_matrix <- create_odm_from_r_matrix_internal(
     mat = grna_matrix,
     file_to_write = paste0(directory_to_write, "/grna.odm"),
     integer_id = integer_id

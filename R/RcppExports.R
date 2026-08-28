@@ -21,6 +21,10 @@ estimate_theta <- function(y, mu, dfr, limit, eps) {
     .Call(`_sceptre_estimate_theta`, y, mu, dfr, limit, eps)
 }
 
+crt_spa_full_cpp <- function(a, w, Z, propensity, target, score_sign = 1L, tolerance = 1e-9, max_iterations = 50L) {
+    .Call(`_sceptre_crt_spa_full_cpp`, a, w, Z, propensity, target, score_sign, tolerance, max_iterations)
+}
+
 #' @title Fisher-Yates sampler
 #' @description This function draws a without replacement sample using the Fisher-Yates sampling algorithm
 #' @param n_tot the total number of cells
@@ -48,6 +52,10 @@ crt_index_sampler <- function(fitted_probabilities, B) {
 
 crt_index_sampler_fast <- function(fitted_probabilities, B) {
     .Call(`_sceptre_crt_index_sampler_fast`, fitted_probabilities, B)
+}
+
+run_low_level_test_full_crt_spa_v1 <- function(y, mu, a, w, D, Z, fitted_probabilities, trt_idxs, n_trt, use_all_cells, synthetic_idxs, B1, B2, return_resampling_dist, side_code) {
+    .Call(`_sceptre_run_low_level_test_full_crt_spa_v1`, y, mu, a, w, D, Z, fitted_probabilities, trt_idxs, n_trt, use_all_cells, synthetic_idxs, B1, B2, return_resampling_dist, side_code)
 }
 
 run_low_level_test_full_v4 <- function(y, mu, a, w, D, trt_idxs, n_trt, use_all_cells, synthetic_idxs, B1, B2, B3, fit_parametric_curve, return_resampling_dist, side_code) {

@@ -62,7 +62,6 @@ sceptre_object <- sceptre_object |>
   run_calibration_check(
     n_calibration_pairs = 500,
     calibration_group_size = 2,
-    parallel = TRUE,
-    n_processors = 2
+    parallel = FALSE
   )
 }

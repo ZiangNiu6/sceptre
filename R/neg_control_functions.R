@@ -50,7 +50,10 @@ construct_negative_control_pairs_v2 <- function(sceptre_object, n_calibration_pa
         unique()
     })
     if (methods::is(response_matrix, "odm")) {
-      n_nonzero_m <- ondisc:::compute_n_trt_cells_matrix_ondisc(
+      compute_n_trt_cells_matrix_ondisc <- .get_ondisc_function(
+        "compute_n_trt_cells_matrix_ondisc"
+      )
+      n_nonzero_m <- compute_n_trt_cells_matrix_ondisc(
         file_name_in = response_matrix@h5_file,
         f_row_ptr = response_matrix@ptr,
         n_cells_orig = ncol(response_matrix),

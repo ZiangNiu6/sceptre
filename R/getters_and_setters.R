@@ -80,7 +80,7 @@ get_cell_covariates <- function(sceptre_object) {
 #'     side = "left"
 #'   ) |>
 #'   assign_grnas(
-#'     method = "mixture", parallel = TRUE, n_processors = 2
+#'     method = "mixture", parallel = FALSE
 #'   ) |>
 #'   run_qc()
 #'

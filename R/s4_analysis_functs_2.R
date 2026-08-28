@@ -37,8 +37,7 @@
 #'   run_calibration_check(
 #'     n_calibration_pairs = 500,
 #'     calibration_group_size = 2,
-#'     parallel = TRUE,
-#'     n_processors = 2
+#'     parallel = FALSE
 #'   )
 run_calibration_check <- function(sceptre_object, n_calibration_pairs = NULL,
                                   calibration_group_size = NULL, print_progress = TRUE, parallel = FALSE,
@@ -244,8 +243,7 @@ run_power_check <- function(sceptre_object, output_amount = 1, print_progress = 
 #'   assign_grnas(method = "thresholding") |>
 #'   run_qc() |>
 #'   run_discovery_analysis(
-#'     parallel = TRUE,
-#'     n_processors = 2
+#'     parallel = FALSE
 #'   )
 run_discovery_analysis <- function(sceptre_object, output_amount = 1, print_progress = TRUE, parallel = FALSE,
                                    n_processors = "auto", log_dir = tempdir()) {
@@ -483,13 +481,11 @@ get_result <- function(sceptre_object, analysis) {
 #'   assign_grnas(method = "thresholding") |>
 #'   run_qc() |>
 #'   run_calibration_check(
-#'     parallel = TRUE,
-#'     n_processors = 2
+#'     parallel = FALSE
 #'   ) |>
 #'   run_power_check() |>
 #'   run_discovery_analysis(
-#'     parallel = TRUE,
-#'     n_processors = 2
+#'     parallel = FALSE
 #'   ) |>
 #'   write_outputs_to_directory(paste0(tempdir(), "/sceptre_outputs"))
 #' # files written to "sceptre_outputs" in tempdir()

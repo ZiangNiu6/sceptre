@@ -7,6 +7,40 @@ construct_data_frame_v2 <- function(curr_df, curr_response_result, output_amount
     curr_df$xi <- vapply(curr_response_result, FUN = function(l) l$sn_params[1L], FUN.VALUE = numeric(1))
     curr_df$omega <- vapply(curr_response_result, FUN = function(l) l$sn_params[2L], FUN.VALUE = numeric(1))
     curr_df$alpha <- vapply(curr_response_result, FUN = function(l) l$sn_params[3L], FUN.VALUE = numeric(1))
+
+    optional_diagnostic_types <- list(
+      p_value_source = NA_character_,
+      spa_converged = NA,
+      spa_reason = NA_character_,
+      spa_iterations = NA_integer_,
+      spa_max_residual = NA_real_,
+      spa_rate = NA_real_,
+      spa_r_lr = NA_real_,
+      spa_q_lr = NA_real_
+    )
+    for (diagnostic_name in names(optional_diagnostic_types)) {
+      diagnostic_present <- vapply(
+        curr_response_result,
+        FUN = function(l) !is.null(l[[diagnostic_name]]) && length(l[[diagnostic_name]]) >= 1L,
+        FUN.VALUE = logical(1)
+      )
+      if (any(diagnostic_present)) {
+        default_value <- optional_diagnostic_types[[diagnostic_name]]
+        curr_df[[diagnostic_name]] <- vapply(
+          curr_response_result,
+          FUN = function(l) {
+            value <- l[[diagnostic_name]]
+            if (is.null(value) || length(value) == 0L) return(default_value)
+            value <- value[[1L]]
+            if (is.character(default_value)) return(as.character(value))
+            if (is.integer(default_value)) return(as.integer(value))
+            if (is.logical(default_value)) return(as.logical(value))
+            as.numeric(value)
+          },
+          FUN.VALUE = default_value
+        )
+      }
+    }
   }
   if (output_amount >= 3L) {
     to_append <- lapply(curr_response_result, FUN = function(l) {
@@ -79,10 +113,22 @@ auto_compute_cell_covariates <- function(response_matrix, grna_matrix, extra_cov
 }
 
 
+.resolve_n_processors <- function(n_processors, os_type = .Platform$OS.type,
+                                  detected_cores = parallel::detectCores(logical = FALSE)) {
+  if (identical(os_type, "windows")) return(1L)
+  if (!identical(n_processors, "auto")) return(n_processors)
+  if (length(detected_cores) != 1L || is.na(detected_cores) ||
+      !is.finite(detected_cores) || detected_cores < 1L) {
+    return(1L)
+  }
+  max(1L, as.integer(floor(detected_cores / 2)))
+}
+
+
 partition_response_ids <- function(response_ids, parallel, n_processors) {
   groups_set <- FALSE
   if (parallel) {
-    if (identical(n_processors, "auto")) n_processors <- floor(parallel::detectCores(logical = FALSE)/2)
+    n_processors <- .resolve_n_processors(n_processors)
     if (length(response_ids) >= 2 * n_processors) {
       set.seed(4)
       s <- sample(response_ids)

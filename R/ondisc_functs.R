@@ -14,36 +14,40 @@
 #' @return `write_ondisc_backed_sceptre_object()` returns NULL, and `read_ondisc_backed_sceptre_object()` returns an `ondisc`-backed `sceptre_object`
 #' @export
 #' @examples
-#' data(lowmoi_example_data)
-#' # 1. create ondisc-backed sceptre_object
-#' sceptre_object <- import_data(
-#'   response_matrix = lowmoi_example_data$response_matrix,
-#'   grna_matrix = lowmoi_example_data$grna_matrix,
-#'   grna_target_data_frame = lowmoi_example_data$grna_target_data_frame,
-#'   extra_covariates = lowmoi_example_data$extra_covariates,
-#'   moi = "low",
-#'   use_ondisc = TRUE,
-#'   directory_to_write = tempdir()
-#' )
+#' if (requireNamespace("ondisc", quietly = TRUE) &&
+#'     utils::packageVersion("ondisc") >= package_version("1.2.0")) {
+#'   data(lowmoi_example_data)
+#'   # 1. create ondisc-backed sceptre_object
+#'   sceptre_object <- import_data(
+#'     response_matrix = lowmoi_example_data$response_matrix,
+#'     grna_matrix = lowmoi_example_data$grna_matrix,
+#'     grna_target_data_frame = lowmoi_example_data$grna_target_data_frame,
+#'     extra_covariates = lowmoi_example_data$extra_covariates,
+#'     moi = "low",
+#'     use_ondisc = TRUE,
+#'     directory_to_write = tempdir()
+#'   )
 #'
-#' # 2. write
-#' write_ondisc_backed_sceptre_object(
-#'   sceptre_object = sceptre_object,
-#'   directory_to_write = tempdir()
-#' )
+#'   # 2. write
+#'   write_ondisc_backed_sceptre_object(
+#'     sceptre_object = sceptre_object,
+#'     directory_to_write = tempdir()
+#'   )
 #'
-#' # 3. read
-#' rm(sceptre_object)
-#' sceptre_object <- read_ondisc_backed_sceptre_object(
-#'   sceptre_object_fp = paste0(tempdir(), "/sceptre_object.rds"),
-#'   response_odm_file_fp = paste0(tempdir(), "/response.odm"),
-#'   grna_odm_file_fp = paste0(tempdir(), "/grna.odm")
-#' )
+#'   # 3. read
+#'   rm(sceptre_object)
+#'   sceptre_object <- read_ondisc_backed_sceptre_object(
+#'     sceptre_object_fp = paste0(tempdir(), "/sceptre_object.rds"),
+#'     response_odm_file_fp = paste0(tempdir(), "/response.odm"),
+#'     grna_odm_file_fp = paste0(tempdir(), "/grna.odm")
+#'   )
+#' }
 read_ondisc_backed_sceptre_object <- function(sceptre_object_fp, response_odm_file_fp, grna_odm_file_fp) {
   # read in objects
   sceptre_object <- readRDS(sceptre_object_fp)
-  response_odm <- ondisc::initialize_odm_from_backing_file(response_odm_file_fp)
-  grna_odm <- ondisc::initialize_odm_from_backing_file(grna_odm_file_fp)
+  initialize_odm <- .get_ondisc_function("initialize_odm_from_backing_file")
+  response_odm <- initialize_odm(response_odm_file_fp)
+  grna_odm <- initialize_odm(grna_odm_file_fp)
   # check for concordance of integer ids
   if (sceptre_object@integer_id != response_odm@integer_id) {
     stop("The `sceptre_object` and `response_odm` have distinct IDs. The `sceptre_object` likely is associated with a different backing .odm file.")
@@ -72,6 +76,59 @@ write_ondisc_backed_sceptre_object <- function(sceptre_object, directory_to_writ
 ###########################
 # PIPELINE HELPER FUNCTIONS
 ###########################
+.get_ondisc_function <- function(function_name, namespace = NULL) {
+  if (!is.character(function_name) || length(function_name) != 1L ||
+      is.na(function_name) || !nzchar(function_name)) {
+    stop("`function_name` must be a single, nonempty string.", call. = FALSE)
+  }
+
+  installed_version <- NULL
+  if (is.null(namespace)) {
+    if (!requireNamespace("ondisc", quietly = TRUE)) {
+      stop(
+        "This operation requires the optional package `ondisc` (>= 1.2.0).",
+        call. = FALSE
+      )
+    }
+
+    installed_version <- utils::packageVersion("ondisc")
+    if (installed_version < package_version("1.2.0")) {
+      stop(
+        paste0(
+          "This operation requires `ondisc` >= 1.2.0, but version ",
+          installed_version, " is installed."
+        ),
+        call. = FALSE
+      )
+    }
+    namespace <- asNamespace("ondisc")
+  }
+
+  ondisc_function <- get0(
+    function_name,
+    envir = namespace,
+    mode = "function",
+    inherits = FALSE
+  )
+  if (is.null(ondisc_function)) {
+    version_suffix <- if (is.null(installed_version)) {
+      ""
+    } else {
+      paste0(" ", installed_version)
+    }
+    stop(
+      paste0(
+        "The installed `ondisc` package", version_suffix,
+        " does not provide the required function `", function_name,
+        "()`. Install a compatible `ondisc` release (>= 1.2.0)."
+      ),
+      call. = FALSE
+    )
+  }
+
+  ondisc_function
+}
+
 get_id_vect <- function(v, pod_size) {
   n_elements <- length(v)
   breaks <- round(n_elements / pod_size)

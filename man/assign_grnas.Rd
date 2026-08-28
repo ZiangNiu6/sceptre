@@ -53,6 +53,6 @@ sceptre_object <- import_data(
 sceptre_object <- sceptre_object |> assign_grnas(method = "thresholding")
 sceptre_object <- sceptre_object |> assign_grnas(method = "maximum")
 sceptre_object <- sceptre_object |> assign_grnas(
-  method = "mixture", parallel = TRUE, n_processors = 2
+  method = "mixture", parallel = FALSE
 )
 }

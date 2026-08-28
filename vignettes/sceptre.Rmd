@@ -31,7 +31,8 @@ This chapter illustrates application of `sceptre` to a small simulated CRISPRi s
 
 ```{r, echo = FALSE}
 library(Matrix)
-system("rm -rf ~/sceptre_outputs")
+sceptre_output_directory <- file.path(tempdir(), "sceptre_outputs")
+unlink(sceptre_output_directory, recursive = TRUE, force = TRUE)
 ```
 
 Using `sceptre` is simple; carrying out an entire analysis requires only a few lines of code. Below, we provide a minimal working example of applying `sceptre` to analyze the example data. First, we load the example data into R via the function `import_data_from_cellranger()`, which creates a `sceptre_object`, an object-based representation of the single-cell CRISPR screen data. Next, we specify the gRNA-gene pairs that we seek to test for association. Then, we call the pipeline functions on the `sceptre_object` in order. Finally, we write the outputs to the directory `~/sceptre_outputs`.
@@ -92,9 +93,9 @@ discovery_pairs <- construct_cis_pairs(
 # apply the pipeline functions to the sceptre_object in order
 sceptre_object <- sceptre_object |> # |> is R's base pipe, similar to %>%
   set_analysis_parameters(discovery_pairs, positive_control_pairs) |>
-  run_calibration_check(print_progress = FALSE, parallel = TRUE, n_processors = 2) |>
-  run_power_check(print_progress = FALSE, parallel = TRUE, n_processors = 2) |>
-  run_discovery_analysis(print_progress = FALSE, parallel = TRUE, n_processors = 2)
+  run_calibration_check(print_progress = FALSE, parallel = FALSE) |>
+  run_power_check(print_progress = FALSE, parallel = FALSE) |>
+  run_discovery_analysis(print_progress = FALSE, parallel = FALSE)
 ```
 
 ```{r, echo = FALSE}
@@ -230,10 +231,10 @@ The gRNAs display bimodal count distributions. Consider, for example, `candidate
 
 **`sceptre` provides three methods for assigning gRNAs to cells (the "mixture method," the "maximum method," and the "thresholding method")**, all of which account for background contamination. The default method for high-MOI data is the "mixture method." The gRNA counts are regressed onto the (unobserved) gRNA presence/absence indicator and the cell-specific covariates (e.g., `grna_n_umis`, `batch`) via a latent variable Poisson GLM. The fitted model yields the probability that each cell contains the gRNA, and these probabilities are thresholded to assign the gRNA to cells. The default method in low-MOI is the simpler "maximum" approach: the gRNA that accounts for the greatest number of UMIs in a given cell is assigned to that cell. A backup option in both low- and high-MOI is the "thresholding" approach: a given gRNA is assigned to a given cell if the UMI count of that gRNA in that cell exceeds some integer threshold.
 
-We carry out the gRNA assignment step via a call to the function `assign_grnas()`. `assign_grnas()` takes arguments `sceptre_object` (required) and `method` (optional); the latter argument can be set to `"mixture"`, `"maximum"`, or `"thresholding"`. We parallelize execution of `assign_grnas()` by setting `parallel` to `TRUE`. (Parallel execution is not yet configured for Windows. We recommend that Windows users seeking to parallelize their analysis leverage the [`sceptre` Nextflow pipeline](https://timothy-barry.github.io/sceptre-book/).)
+We carry out the gRNA assignment step via a call to the function `assign_grnas()`. `assign_grnas()` takes arguments `sceptre_object` (required) and `method` (optional); the latter argument can be set to `"mixture"`, `"maximum"`, or `"thresholding"`. We run this small example serially so that the vignette is portable across operating systems. On supported systems, users can parallelize execution by setting `parallel` to `TRUE`. (Parallel execution is not yet configured for Windows. We recommend that Windows users seeking to parallelize their analysis leverage the [`sceptre` Nextflow pipeline](https://timothy-barry.github.io/sceptre-book/).)
 
 ```{r,results='hide'}
-sceptre_object <- assign_grnas(sceptre_object = sceptre_object, parallel = TRUE, n_processors = 2)
+sceptre_object <- assign_grnas(sceptre_object = sceptre_object, parallel = FALSE)
 print(sceptre_object) # output suppressed for brevity
 ```
 
@@ -288,7 +289,7 @@ The fifth step is to run the calibration check. **The calibration check is an an
 We run the calibration check by calling the function `run_calibration_check()` on the `sceptre_object`.
 
 ```{r,results='hide'}
-sceptre_object <- run_calibration_check(sceptre_object, parallel = TRUE, n_processors = 2)
+sceptre_object <- run_calibration_check(sceptre_object, parallel = FALSE)
 print(sceptre_object) # output suppressed for brevity
 ```
 
@@ -322,7 +323,7 @@ The visualization consists of four panels, which we describe below.
 The sixth step --- which is optional --- is to run the power check. The power check involves applying `sceptre` to analyze the positive control pairs. Given that the positive control pairs are known to contain signal, `sceptre` should produce significant (i.e., small) p-values on the positive control pairs. **The power check enables us to assess `sceptre`'s power (i.e., its ability to detect true associations) on the dataset under analysis.** We run the power check by calling the function `run_power_check()` on the `sceptre_object`.
 
 ```{r,results='hide'}
-sceptre_object <- run_power_check(sceptre_object, parallel = TRUE, n_processors = 2)
+sceptre_object <- run_power_check(sceptre_object, parallel = FALSE)
 print(sceptre_object) # output suppressed for brevity
 ```
 
@@ -346,7 +347,7 @@ Each point in the plot corresponds to a target-response pair, with positive cont
 The seventh and penultimate step is to run the discovery analysis. The discovery analysis entails applying `sceptre` to analyze the discovery pairs. We run the discovery analysis by calling the function `run_discovery_analysis()`.
 
 ```{r,results='hide'}
-sceptre_object <- run_discovery_analysis(sceptre_object, parallel = TRUE, n_processors = 2)
+sceptre_object <- run_discovery_analysis(sceptre_object, parallel = FALSE)
 print(sceptre_object) # output suppressed for brevity
 ```
 
@@ -380,14 +381,14 @@ The eighth and final step is to write the outputs of the analysis to a directory
 ```{r,results='hide'}
 write_outputs_to_directory(
   sceptre_object = sceptre_object, 
-  directory = "~/sceptre_outputs"
+  directory = sceptre_output_directory
 )
 ```
 
 `write_outputs_to_directory()` writes several files to the specified directory: a text-based summary of the analysis (`analysis_summary.txt`), the various plots (`*.png`), the calibration check, power check, discovery analysis results (`results_run_calibration_check.rds`, `results_run_power_check.rds`, and `results_run_discovery_analysis.rds`, respectively), and the binary gRNA-to-cell assignment matrix (`grna_assignment_matrix.rds`).
 
 ```{r}
-list.files("~/sceptre_outputs")
+list.files(sceptre_output_directory)
 ```
 
 We also can obtain the calibration check, power check, and discovery analysis results in R via a call to the function `get_result()`, passing as arguments `sceptre_object` and `analysis`, where the latter is a string indicating the function whose results we are querying.

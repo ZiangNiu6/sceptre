@@ -736,6 +736,7 @@ plot_cellwise_qc <- function(sceptre_object) {
     ggplot2::geom_bar(stat = "identity", fill = "grey90", col = "darkblue") +
     get_my_theme() +
     ggplot2::scale_y_continuous(expand = c(0, NA)) +
+    ggplot2::xlab("Filter") +
     ggplot2::ylab("Percent cells removed") +
     ggplot2::scale_x_discrete(guide = ggplot2::guide_axis(angle = 20)) +
     get_my_theme() +
@@ -1012,7 +1013,7 @@ plot_response_grna_target_pair <- function(sceptre_object, response_id, grna_tar
     dplyr::group_by(is_zero, treatment) |>
     dplyr::sample_n(size = min(dplyr::n(), 1000))
   p_out <- ggplot2::ggplot(data = to_plot, mapping = ggplot2::aes(x = treatment, y = normalized_count, col = treatment)) +
-    ggplot2::geom_violin(draw_quantiles = 0.5, linewidth = 0.6) +
+    ggplot2::geom_violin(quantiles = 0.5, quantile.linetype = 1, linewidth = 0.6) +
     ggplot2::geom_jitter(data = to_plot_downsample, alpha = 0.1, size = 0.5) +
     get_my_theme() +
     ggplot2::theme(legend.position = "none") +

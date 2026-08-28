@@ -68,8 +68,11 @@ assign_grnas_to_cells <- function(sceptre_object, print_progress,
 assign_grnas_to_cells_thresholding <- function(grna_matrix, grna_assign_threshold, grna_ids) {
   # take cases on the class of grna_matrix
   if (methods::is(grna_matrix, "odm")) {
+    threshold_count_matrix_ondisc <- .get_ondisc_function(
+      "threshold_count_matrix_cpp"
+    )
     initial_assignment_list <- lapply(grna_ids, function(grna_id) {
-      ondisc:::threshold_count_matrix_cpp(
+      threshold_count_matrix_ondisc(
         file_name_in = grna_matrix@h5_file,
         f_row_ptr = grna_matrix@ptr,
         row_idx = which(grna_id == rownames(grna_matrix)),

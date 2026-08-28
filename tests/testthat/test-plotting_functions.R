@@ -3,10 +3,10 @@
 # taken from Julius Vainora's answer at https://stackoverflow.com/questions/54051576
 # This is used to get information from a cowplot::plot_grid object
 get_elements_from_plot_grid <- function(p, what) {
-  unlist(sapply(p$layers, function(x) {
+  unname(unlist(sapply(p$layers, function(x) {
     idx <- which(x$geom_params$grob$layout$name == what)
     x$geom_params$grob$grobs[[idx]]$children[[1]]$label
-  }))
+  })))
 }
 
 # this test makes a single sceptre object and runs thru each of the main plots
@@ -115,10 +115,19 @@ test_that("test all plots", {
   expect_equal(pltlist[[3]]$labels$x, "Estimated log-2 fold change")
   expect_equal(pltlist[[3]]$labels$y, "Density")
 
-  # this is the text-only pane
-  expect_true(!"title" %in% names(pltlist[[4]]))
-  expect_equal(pltlist[[4]]$labels$x, "x")
-  expect_equal(pltlist[[4]]$labels$y, "y")
+  # this is the text-only pane: test the summary annotation rather than
+  # ggplot2's version-dependent implicit x/y label metadata
+  expect_true(!"title" %in% names(pltlist[[4]]$labels))
+  expect_match(
+    pltlist[[4]]$layers[[1]]$aes_params$label,
+    "Number of\nfalse discoveries",
+    fixed = TRUE
+  )
+  expect_match(
+    pltlist[[4]]$layers[[1]]$aes_params$label,
+    "Mean log-2-fold\nchange",
+    fixed = TRUE
+  )
 
   # testing `plot_run_discovery_analysis()` ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   pltlist <- plot_run_discovery_analysis(scep, return_indiv_plots = TRUE)
@@ -136,10 +145,14 @@ test_that("test all plots", {
   expect_equal(pltlist[[3]]$labels$x, "Log fold change")
   expect_equal(pltlist[[3]]$labels$y, "P-value")
 
-  # this is the text-only pane
-  expect_true(!"title" %in% names(pltlist[[4]]))
-  expect_equal(pltlist[[4]]$labels$x, "x")
-  expect_equal(pltlist[[4]]$labels$y, "y")
+  # this is the text-only pane: test the summary annotation rather than
+  # ggplot2's version-dependent implicit x/y label metadata
+  expect_true(!"title" %in% names(pltlist[[4]]$labels))
+  expect_match(
+    pltlist[[4]]$layers[[1]]$aes_params$label,
+    "Number of discovery pairs\ncalled as significant",
+    fixed = TRUE
+  )
 
   # testing `plot_run_qc()` ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   pltlist <- plot_run_qc(scep, return_indiv_plots = TRUE)
@@ -164,4 +177,5 @@ test_that("test all plots", {
   expect_equal(plt$labels$title, "Response: response_4\ngRNA target: t1")
   expect_equal(plt$labels$x, "Treatment status")
   expect_equal(plt$labels$y, "Normalized expression")
+  expect_no_warning(ggplot2::ggplot_build(plt))
 })

@@ -6,6 +6,7 @@
 ^docs$
 ^pkgdown$
 ^vignettes/articles$
+^vignettes/update_vignette\.sh$
 ^\.github$
 ^LICENSE\.md$
 ^doc$

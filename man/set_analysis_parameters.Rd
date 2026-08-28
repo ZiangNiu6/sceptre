@@ -32,7 +32,7 @@ set_analysis_parameters(
 
 \item{formula_object}{(optional) a formula object specifying how to adjust for the covariates in the model}
 
-\item{resampling_approximation}{(optional; default \code{"skew_normal"}) a string indicating the resampling approximation to make to the null distribution of test statistics, either \code{"skew_normal"} or \code{"no_approximation"}}
+\item{resampling_approximation}{(optional; default \code{"skew_normal"}) a string indicating the resampling approximation to make to the null distribution of test statistics, one of \code{"skew_normal"}, \code{"no_approximation"}, or \code{"crt_spa"}. The \code{"crt_spa"} option uses a full-Newton saddlepoint approximation after the existing 499-resample tail screen and falls back to 4,999 empirical CRT resamples if the solver fails. It is available only with \code{resampling_mechanism = "crt"}.}
 
 \item{control_group}{(optional) a string specifying the control group to use in the differential expression analysis, either \code{"complement"} or \code{"nt_cells"}}
 

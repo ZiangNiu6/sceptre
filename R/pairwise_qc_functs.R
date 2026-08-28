@@ -35,7 +35,10 @@ compute_pairwise_qc_information <- function(sceptre_object) {
   # take cases on odm
   if (methods::is(response_matrix, "odm")) {
     if (sceptre_object@nuclear) {
-      out <- ondisc:::compute_n_ok_pairs_ondisc(
+      compute_n_ok_pairs_ondisc <- .get_ondisc_function(
+        "compute_n_ok_pairs_ondisc"
+      )
+      out <- compute_n_ok_pairs_ondisc(
         file_name_in = response_matrix@h5_file,
         f_row_ptr = response_matrix@ptr,
         n_genes = nrow(response_matrix),
@@ -52,7 +55,10 @@ compute_pairwise_qc_information <- function(sceptre_object) {
       out$n_nonzero_mat <- matrix()
       out$n_nonzero_tot <- integer()
     } else {
-      out <- ondisc:::compute_nt_nonzero_matrix_and_n_ok_pairs_ondisc(
+      compute_nt_nonzero_matrix_and_n_ok_pairs_ondisc <- .get_ondisc_function(
+        "compute_nt_nonzero_matrix_and_n_ok_pairs_ondisc"
+      )
+      out <- compute_nt_nonzero_matrix_and_n_ok_pairs_ondisc(
         file_name_in = response_matrix@h5_file,
         f_row_ptr = response_matrix@ptr,
         n_genes = nrow(response_matrix),

@@ -10,7 +10,7 @@
 #' @param formula_object (optional) a formula object specifying how to adjust for the covariates in the model
 #' @param side (optional; default `"both"`) the sidedness of the test, one of `"left"`, `"right"`, or `"both"`
 #' @param grna_integration_strategy (optional; default `"union"`) a string specifying the gRNA integration strategy, either `"singleton"`, `"union"`, or `"bonferroni"`
-#' @param resampling_approximation (optional; default `"skew_normal"`) a string indicating the resampling approximation to make to the null distribution of test statistics, either `"skew_normal"` or `"no_approximation"`
+#' @param resampling_approximation (optional; default `"skew_normal"`) a string indicating the resampling approximation to make to the null distribution of test statistics, one of `"skew_normal"`, `"no_approximation"`, or `"crt_spa"`. The `"crt_spa"` option uses a full-Newton saddlepoint approximation after the existing 499-resample tail screen and falls back to 4,999 empirical CRT resamples if the solver fails. It is available only with `resampling_mechanism = "crt"`.
 #' @param control_group (optional) a string specifying the control group to use in the differential expression analysis, either `"complement"` or `"nt_cells"`
 #' @param resampling_mechanism (optional) a string specifying the resampling mechanism to use, either `"permutations"` or `"crt"`
 #' @param multiple_testing_method (optional; default `"BH"`) a string specifying the multiple testing correction method to use; see `p.adjust.methods` for options
@@ -79,6 +79,9 @@ set_analysis_parameters <- function(sceptre_object,
   if (resampling_approximation == "skew_normal") {
     B2 <- 4999L
     B3 <- if (resampling_mechanism == "permutations") 24999L else 0L
+  } else if (resampling_approximation == "crt_spa") {
+    B2 <- 4999L # empirical fallback if the saddlepoint solver fails
+    B3 <- 0L
   } else if (resampling_approximation == "no_approximation") {
     B2 <- 0L # no curve fitting; thus, B2 = 0L
     B3 <- 0L # to be updated in the run_qc step
@@ -168,7 +171,7 @@ set_analysis_parameters <- function(sceptre_object,
 #' sceptre_object <- sceptre_object |> assign_grnas(method = "thresholding")
 #' sceptre_object <- sceptre_object |> assign_grnas(method = "maximum")
 #' sceptre_object <- sceptre_object |> assign_grnas(
-#'   method = "mixture", parallel = TRUE, n_processors = 2
+#'   method = "mixture", parallel = FALSE
 #' )
 assign_grnas <- function(sceptre_object, method = "default", print_progress = TRUE, parallel = FALSE,
                          n_processors = "auto", log_dir = tempdir(), ...) {

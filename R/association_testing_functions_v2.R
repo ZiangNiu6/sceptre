@@ -107,7 +107,7 @@ discovery_ntcells_perm_test <- function(synthetic_idxs, B1, B2, B3, fit_parametr
 
 
 # workhorse function 3: crt, glm factored out
-crt_glm_factored_out <- function(B1, B2, B3, fit_parametric_curve, output_amount,
+crt_glm_factored_out <- function(B1, B2, B3, fit_parametric_curve, use_crt_spa, output_amount,
                                  response_ids, response_precomputations, covariate_matrix,
                                  get_idx_f, curr_grna_group, subset_to_nt_cells, all_nt_idxs,
                                  response_matrix, side_code, cells_in_use) {
@@ -143,28 +143,48 @@ crt_glm_factored_out <- function(B1, B2, B3, fit_parametric_curve, output_amount
       full_test_stat = TRUE
     )
     # run the association test
-    result <- run_low_level_test_full_v4(
-      y = expression_vector,
-      mu = pieces_precomp$mu,
-      a = pieces_precomp$a,
-      w = pieces_precomp$w,
-      D = pieces_precomp$D,
-      trt_idxs = trt_idxs,
-      n_trt = n_trt,
-      use_all_cells = TRUE,
-      synthetic_idxs = synthetic_idxs,
-      B1 = B1, B2 = B2, B3 = B3,
-      fit_parametric_curve = fit_parametric_curve,
-      return_resampling_dist = (output_amount == 3L),
-      side_code = side_code
-    )
+    if (use_crt_spa) {
+      result <- run_low_level_test_full_crt_spa_v1(
+        y = expression_vector,
+        mu = pieces_precomp$mu,
+        a = pieces_precomp$a,
+        w = pieces_precomp$w,
+        D = pieces_precomp$D,
+        Z = covariate_matrix,
+        fitted_probabilities = fitted_probabilities,
+        trt_idxs = trt_idxs,
+        n_trt = n_trt,
+        use_all_cells = TRUE,
+        synthetic_idxs = synthetic_idxs,
+        B1 = B1,
+        B2 = B2,
+        return_resampling_dist = (output_amount == 3L),
+        side_code = side_code
+      )
+    } else {
+      result <- run_low_level_test_full_v4(
+        y = expression_vector,
+        mu = pieces_precomp$mu,
+        a = pieces_precomp$a,
+        w = pieces_precomp$w,
+        D = pieces_precomp$D,
+        trt_idxs = trt_idxs,
+        n_trt = n_trt,
+        use_all_cells = TRUE,
+        synthetic_idxs = synthetic_idxs,
+        B1 = B1, B2 = B2, B3 = B3,
+        fit_parametric_curve = fit_parametric_curve,
+        return_resampling_dist = (output_amount == 3L),
+        side_code = side_code
+      )
+    }
     result_list_inner[[i]] <- result
   }
   return(result_list_inner)
 }
 
 # workhorse function 4: crt, glm run inside
-discovery_ntcells_crt <- function(B1, B2, B3, fit_parametric_curve, output_amount, get_idx_f, response_ids,
+discovery_ntcells_crt <- function(B1, B2, B3, fit_parametric_curve, use_crt_spa, output_amount, get_idx_f, response_ids,
                                   covariate_matrix, curr_grna_group, all_nt_idxs, response_matrix,
                                   side_code, cells_in_use) {
   result_list_inner <- vector(mode = "list", length = length(response_ids))
@@ -208,21 +228,41 @@ discovery_ntcells_crt <- function(B1, B2, B3, fit_parametric_curve, output_amoun
       full_test_stat = TRUE
     )
     # run the association test
-    result <- run_low_level_test_full_v4(
-      y = curr_expression_vector,
-      mu = pieces_precomp$mu,
-      a = pieces_precomp$a,
-      w = pieces_precomp$w,
-      D = pieces_precomp$D,
-      trt_idxs = trt_idxs,
-      n_trt = n_trt,
-      use_all_cells = TRUE,
-      synthetic_idxs = synthetic_idxs,
-      B1 = B1, B2 = B2, B3 = B3,
-      fit_parametric_curve = fit_parametric_curve,
-      return_resampling_dist = (output_amount == 3L),
-      side_code = side_code
-    )
+    if (use_crt_spa) {
+      result <- run_low_level_test_full_crt_spa_v1(
+        y = curr_expression_vector,
+        mu = pieces_precomp$mu,
+        a = pieces_precomp$a,
+        w = pieces_precomp$w,
+        D = pieces_precomp$D,
+        Z = curr_covariate_matrix,
+        fitted_probabilities = fitted_probabilities,
+        trt_idxs = trt_idxs,
+        n_trt = n_trt,
+        use_all_cells = TRUE,
+        synthetic_idxs = synthetic_idxs,
+        B1 = B1,
+        B2 = B2,
+        return_resampling_dist = (output_amount == 3L),
+        side_code = side_code
+      )
+    } else {
+      result <- run_low_level_test_full_v4(
+        y = curr_expression_vector,
+        mu = pieces_precomp$mu,
+        a = pieces_precomp$a,
+        w = pieces_precomp$w,
+        D = pieces_precomp$D,
+        trt_idxs = trt_idxs,
+        n_trt = n_trt,
+        use_all_cells = TRUE,
+        synthetic_idxs = synthetic_idxs,
+        B1 = B1, B2 = B2, B3 = B3,
+        fit_parametric_curve = fit_parametric_curve,
+        return_resampling_dist = (output_amount == 3L),
+        side_code = side_code
+      )
+    }
     result_list_inner[[i]] <- result
   }
   return(result_list_inner)
