@@ -25,8 +25,20 @@ crt_empirical_spa_full_cpp <- function(a, propensity, target, score_sign = 1L, t
     .Call(`_sceptre_crt_empirical_spa_full_cpp`, a, propensity, target, score_sign, tolerance, max_iterations, max_backtracks)
 }
 
+crt_empirical_spa_full_fast_cpp <- function(a, propensity, target, score_sign = 1L, tolerance = 1e-6, max_iterations = 60L, max_backtracks = 24L) {
+    .Call(`_sceptre_crt_empirical_spa_full_fast_cpp`, a, propensity, target, score_sign, tolerance, max_iterations, max_backtracks)
+}
+
 crt_spa_full_cpp <- function(a, w, Z, propensity, target, score_sign = 1L, tolerance = 1e-9, max_iterations = 50L) {
     .Call(`_sceptre_crt_spa_full_cpp`, a, w, Z, propensity, target, score_sign, tolerance, max_iterations)
+}
+
+crt_spa_full_fast_cpp <- function(a, w, Z, propensity, target, score_sign = 1L, tolerance = 1e-6, max_iterations = 50L) {
+    .Call(`_sceptre_crt_spa_full_fast_cpp`, a, w, Z, propensity, target, score_sign, tolerance, max_iterations)
+}
+
+crt_spa_full_outward_fast_cpp <- function(a, w, Z, propensity, treated_indices, tolerance = 1e-6, max_iterations = 50L) {
+    .Call(`_sceptre_crt_spa_full_outward_fast_cpp`, a, w, Z, propensity, treated_indices, tolerance, max_iterations)
 }
 
 #' @title Fisher-Yates sampler
@@ -58,12 +70,12 @@ crt_index_sampler_fast <- function(fitted_probabilities, B) {
     .Call(`_sceptre_crt_index_sampler_fast`, fitted_probabilities, B)
 }
 
-run_low_level_test_full_crt_spa_v1 <- function(y, mu, a, w, D, Z, fitted_probabilities, trt_idxs, n_trt, use_all_cells, synthetic_idxs, B1, B2, return_resampling_dist, side_code) {
-    .Call(`_sceptre_run_low_level_test_full_crt_spa_v1`, y, mu, a, w, D, Z, fitted_probabilities, trt_idxs, n_trt, use_all_cells, synthetic_idxs, B1, B2, return_resampling_dist, side_code)
+run_low_level_test_full_crt_spa_v1 <- function(y, mu, a, w, D, Z, fitted_probabilities, trt_idxs, n_trt, use_all_cells, synthetic_idxs, B1, B2, return_resampling_dist, side_code, use_fast = FALSE) {
+    .Call(`_sceptre_run_low_level_test_full_crt_spa_v1`, y, mu, a, w, D, Z, fitted_probabilities, trt_idxs, n_trt, use_all_cells, synthetic_idxs, B1, B2, return_resampling_dist, side_code, use_fast)
 }
 
-run_low_level_test_full_crt_spa_always_v1 <- function(y, mu, a, w, Z, fitted_probabilities, trt_idxs, n_trt, side_code, max_iterations = 50L) {
-    .Call(`_sceptre_run_low_level_test_full_crt_spa_always_v1`, y, mu, a, w, Z, fitted_probabilities, trt_idxs, n_trt, side_code, max_iterations)
+run_low_level_test_full_crt_spa_always_v1 <- function(y, mu, a, w, Z, fitted_probabilities, trt_idxs, n_trt, side_code, max_iterations = 50L, use_fast = FALSE) {
+    .Call(`_sceptre_run_low_level_test_full_crt_spa_always_v1`, y, mu, a, w, Z, fitted_probabilities, trt_idxs, n_trt, side_code, max_iterations, use_fast)
 }
 
 finalize_low_level_test_crt_spa_fallback_v1 <- function(a, w, Z, synthetic_idxs, B2, return_resampling_dist, side_code, spa_attempt_result) {
@@ -78,12 +90,12 @@ compute_null_empirical_crt_statistics_v1 <- function(a, fitted_probabilities, st
     .Call(`_sceptre_compute_null_empirical_crt_statistics_v1`, a, fitted_probabilities, start_pos, B, synthetic_idxs)
 }
 
-run_low_level_test_full_crt_spa_empirical_v1 <- function(y, mu, a, fitted_probabilities, trt_idxs, n_trt, synthetic_idxs, B1, B2, return_resampling_dist, side_code, max_iterations = 60L) {
-    .Call(`_sceptre_run_low_level_test_full_crt_spa_empirical_v1`, y, mu, a, fitted_probabilities, trt_idxs, n_trt, synthetic_idxs, B1, B2, return_resampling_dist, side_code, max_iterations)
+run_low_level_test_full_crt_spa_empirical_v1 <- function(y, mu, a, fitted_probabilities, trt_idxs, n_trt, synthetic_idxs, B1, B2, return_resampling_dist, side_code, max_iterations = 60L, use_fast = FALSE) {
+    .Call(`_sceptre_run_low_level_test_full_crt_spa_empirical_v1`, y, mu, a, fitted_probabilities, trt_idxs, n_trt, synthetic_idxs, B1, B2, return_resampling_dist, side_code, max_iterations, use_fast)
 }
 
-run_low_level_test_full_crt_spa_empirical_always_v1 <- function(y, mu, a, fitted_probabilities, trt_idxs, n_trt, side_code, max_iterations = 60L) {
-    .Call(`_sceptre_run_low_level_test_full_crt_spa_empirical_always_v1`, y, mu, a, fitted_probabilities, trt_idxs, n_trt, side_code, max_iterations)
+run_low_level_test_full_crt_spa_empirical_always_v1 <- function(y, mu, a, fitted_probabilities, trt_idxs, n_trt, side_code, max_iterations = 60L, use_fast = FALSE) {
+    .Call(`_sceptre_run_low_level_test_full_crt_spa_empirical_always_v1`, y, mu, a, fitted_probabilities, trt_idxs, n_trt, side_code, max_iterations, use_fast)
 }
 
 finalize_low_level_test_empirical_crt_fallback_v1 <- function(a, fitted_probabilities, synthetic_idxs, B2, return_resampling_dist, side_code, spa_attempt_result) {

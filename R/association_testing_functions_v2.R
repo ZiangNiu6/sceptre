@@ -112,7 +112,8 @@ crt_glm_factored_out <- function(B1, B2, B3, fit_parametric_curve, use_crt_spa, 
                                  use_crt_spa_empirical_always, output_amount,
                                  response_ids, response_precomputations, covariate_matrix,
                                  get_idx_f, curr_grna_group, subset_to_nt_cells, all_nt_idxs,
-                                 response_matrix, side_code, cells_in_use) {
+                                 response_matrix, side_code, cells_in_use,
+                                 use_fast = FALSE) {
   result_list_inner <- vector(mode = "list", length = length(response_ids))
   # precomputation on grna
   idxs <- get_idx_f(curr_grna_group)
@@ -168,7 +169,8 @@ crt_glm_factored_out <- function(B1, B2, B3, fit_parametric_curve, use_crt_spa, 
         B1 = B1,
         B2 = B2,
         return_resampling_dist = (output_amount == 3L),
-        side_code = side_code
+        side_code = side_code,
+        use_fast = use_fast
       )
     } else if (use_crt_spa_always) {
       result <- run_low_level_test_full_crt_spa_always_v1(
@@ -181,7 +183,8 @@ crt_glm_factored_out <- function(B1, B2, B3, fit_parametric_curve, use_crt_spa, 
         trt_idxs = trt_idxs,
         n_trt = n_trt,
         side_code = side_code,
-        max_iterations = 50L
+        max_iterations = 50L,
+        use_fast = use_fast
       )
       if (isTRUE(result$needs_empirical_fallback)) {
         if (is.null(synthetic_idxs)) {
@@ -216,7 +219,8 @@ crt_glm_factored_out <- function(B1, B2, B3, fit_parametric_curve, use_crt_spa, 
         B2 = B2,
         return_resampling_dist = (output_amount == 3L),
         side_code = side_code,
-        max_iterations = 60L
+        max_iterations = 60L,
+        use_fast = use_fast
       )
     } else if (use_crt_spa_empirical_always) {
       result <- run_low_level_test_full_crt_spa_empirical_always_v1(
@@ -227,7 +231,8 @@ crt_glm_factored_out <- function(B1, B2, B3, fit_parametric_curve, use_crt_spa, 
         trt_idxs = trt_idxs,
         n_trt = n_trt,
         side_code = side_code,
-        max_iterations = 60L
+        max_iterations = 60L,
+        use_fast = use_fast
       )
       if (isTRUE(result$needs_empirical_fallback)) {
         if (is.null(synthetic_idxs)) {
@@ -275,7 +280,7 @@ discovery_ntcells_crt <- function(B1, B2, B3, fit_parametric_curve, use_crt_spa,
                                   use_crt_spa_empirical,
                                   use_crt_spa_empirical_always, output_amount, get_idx_f, response_ids,
                                   covariate_matrix, curr_grna_group, all_nt_idxs, response_matrix,
-                                  side_code, cells_in_use) {
+                                  side_code, cells_in_use, use_fast = FALSE) {
   result_list_inner <- vector(mode = "list", length = length(response_ids))
   # initialize the idxs
   idxs <- get_idx_f(curr_grna_group)
@@ -340,7 +345,8 @@ discovery_ntcells_crt <- function(B1, B2, B3, fit_parametric_curve, use_crt_spa,
         B1 = B1,
         B2 = B2,
         return_resampling_dist = (output_amount == 3L),
-        side_code = side_code
+        side_code = side_code,
+        use_fast = use_fast
       )
     } else if (use_crt_spa_always) {
       result <- run_low_level_test_full_crt_spa_always_v1(
@@ -353,7 +359,8 @@ discovery_ntcells_crt <- function(B1, B2, B3, fit_parametric_curve, use_crt_spa,
         trt_idxs = trt_idxs,
         n_trt = n_trt,
         side_code = side_code,
-        max_iterations = 50L
+        max_iterations = 50L,
+        use_fast = use_fast
       )
       if (isTRUE(result$needs_empirical_fallback)) {
         if (is.null(synthetic_idxs)) {
@@ -388,7 +395,8 @@ discovery_ntcells_crt <- function(B1, B2, B3, fit_parametric_curve, use_crt_spa,
         B2 = B2,
         return_resampling_dist = (output_amount == 3L),
         side_code = side_code,
-        max_iterations = 60L
+        max_iterations = 60L,
+        use_fast = use_fast
       )
     } else if (use_crt_spa_empirical_always) {
       result <- run_low_level_test_full_crt_spa_empirical_always_v1(
@@ -399,7 +407,8 @@ discovery_ntcells_crt <- function(B1, B2, B3, fit_parametric_curve, use_crt_spa,
         trt_idxs = trt_idxs,
         n_trt = n_trt,
         side_code = side_code,
-        max_iterations = 60L
+        max_iterations = 60L,
+        use_fast = use_fast
       )
       if (isTRUE(result$needs_empirical_fallback)) {
         if (is.null(synthetic_idxs)) {

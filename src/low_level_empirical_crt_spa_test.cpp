@@ -6,6 +6,7 @@
 #include <RcppEigen.h>
 
 #include "crt_empirical_spa.h"
+#include "crt_empirical_spa_fast.h"
 #include "shared_low_level_functions.h"
 
 #include <algorithm>
@@ -282,7 +283,8 @@ SEXP run_low_level_test_full_crt_spa_empirical_v1(
     int B2,
     bool return_resampling_dist,
     int side_code,
-    int max_iterations = 60) {
+    int max_iterations = 60,
+    bool use_fast = false) {
   if (B1 <= 0 || B2 <= 0) Rcpp::stop("B1 and B2 must be positive");
   if (side_code < -1 || side_code > 1) {
     Rcpp::stop("side_code must be -1, 0, or 1");
@@ -372,9 +374,13 @@ SEXP run_low_level_test_full_crt_spa_empirical_v1(
 
     bool converged = false;
     try {
-      spa_diagnostics = sceptre::crt_empirical_spa_full(
-          a, fitted_probabilities, target, score_sign, 1.0e-9,
-          max_iterations, 24);
+      spa_diagnostics = use_fast
+                            ? sceptre::crt_empirical_spa_full_fast(
+                                  a, fitted_probabilities, target,
+                                  score_sign, 1.0e-6, max_iterations, 24)
+                            : sceptre::crt_empirical_spa_full(
+                                  a, fitted_probabilities, target,
+                                  score_sign, 1.0e-9, max_iterations, 24);
       converged = list_bool_or_false(spa_diagnostics, "converged");
       spa_converged[0] = converged;
       spa_reason = list_string_or(
@@ -417,7 +423,9 @@ SEXP run_low_level_test_full_crt_spa_empirical_v1(
           kMinimumPValue,
           std::min(1.0, sidedness_multiplier * spa_p));
       stage = 2;
-      p_value_source = "crt_spa_empirical_directional";
+      p_value_source = use_fast
+                           ? "crt_spa_empirical_directional_fast"
+                           : "crt_spa_empirical_directional";
     } else {
       null_statistics = null_statistics_from_bank(
           statistic_cache, B1, B2, synthetic_idxs);
@@ -444,6 +452,7 @@ SEXP run_low_level_test_full_crt_spa_empirical_v1(
       Named("stage") = stage,
       Named("sn_params") = sn_params,
       Named("p_value_source") = p_value_source,
+      Named("spa_fast") = use_fast,
       Named("statistic_id") = kStatisticId,
       Named("equation_id") = kEquationId,
       Named("outer_dimension") = 2,
@@ -497,7 +506,8 @@ SEXP run_low_level_test_full_crt_spa_empirical_always_v1(
     IntegerVector trt_idxs,
     int n_trt,
     int side_code,
-    int max_iterations = 60) {
+    int max_iterations = 60,
+    bool use_fast = false) {
   if (side_code < -1 || side_code > 1) {
     Rcpp::stop("side_code must be -1, 0, or 1");
   }
@@ -589,9 +599,13 @@ SEXP run_low_level_test_full_crt_spa_empirical_always_v1(
     spa_score_sign = score_sign;
     bool converged = false;
     try {
-      spa_diagnostics = sceptre::crt_empirical_spa_full(
-          a, fitted_probabilities, target, score_sign, 1.0e-9,
-          max_iterations, 24);
+      spa_diagnostics = use_fast
+                            ? sceptre::crt_empirical_spa_full_fast(
+                                  a, fitted_probabilities, target,
+                                  score_sign, 1.0e-6, max_iterations, 24)
+                            : sceptre::crt_empirical_spa_full(
+                                  a, fitted_probabilities, target,
+                                  score_sign, 1.0e-9, max_iterations, 24);
       converged = list_bool_or_false(spa_diagnostics, "converged");
       spa_converged[0] = converged;
       spa_reason = list_string_or(
@@ -645,7 +659,9 @@ SEXP run_low_level_test_full_crt_spa_empirical_always_v1(
       if (std::isfinite(requested_p)) {
         p = std::max(
             kMinimumPValue, std::min(1.0, requested_p));
-        p_value_source = "crt_spa_empirical_always_directional";
+        p_value_source = use_fast
+                             ? "crt_spa_empirical_always_directional_fast"
+                             : "crt_spa_empirical_always_directional";
         needs_empirical_fallback = false;
       }
     }
@@ -660,6 +676,7 @@ SEXP run_low_level_test_full_crt_spa_empirical_always_v1(
       Named("stage") = 2,
       Named("sn_params") = sn_params,
       Named("p_value_source") = p_value_source,
+      Named("spa_fast") = use_fast,
       Named("needs_empirical_fallback") = needs_empirical_fallback,
       Named("statistic_id") = kStatisticId,
       Named("equation_id") = kEquationId,

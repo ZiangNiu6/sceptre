@@ -3,6 +3,7 @@
 #include <RcppEigen.h>
 
 #include "crt_spa.h"
+#include "crt_spa_fast.h"
 
 #include <algorithm>
 #include <cmath>
@@ -248,7 +249,8 @@ SEXP run_low_level_test_full_crt_spa_v1(
     int B1,
     int B2,
     bool return_resampling_dist,
-    int side_code) {
+    int side_code,
+    bool use_fast = false) {
   if (B1 <= 0 || B2 <= 0) stop("B1 and B2 must be positive");
   if (side_code < -1 || side_code > 1) {
     stop("side_code must be -1, 0, or 1");
@@ -271,6 +273,9 @@ SEXP run_low_level_test_full_crt_spa_v1(
   double spa_rate = NA_REAL;
   double spa_r_lr = NA_REAL;
   double spa_q_lr = NA_REAL;
+  List spa_diagnostics = List::create(
+      Named("converged") = LogicalVector::create(NA_LOGICAL),
+      Named("reason") = spa_reason);
 
   if (p <= kTailTrigger) {
     int score_sign = side_code == -1 ? -1 : 1;
@@ -287,33 +292,45 @@ SEXP run_low_level_test_full_crt_spa_v1(
       sidedness_multiplier = 2.0;
     }
 
-    List spa_result;
     bool converged = false;
     try {
-      spa_result = sceptre::crt_spa_full(
-          a, w, Z, fitted_probabilities, target, score_sign, 1.0e-9, 50);
-      converged = list_bool_or_false(spa_result, "converged");
+      spa_diagnostics = use_fast
+                       ? sceptre::crt_spa_full_fast(
+                             a, w, Z, fitted_probabilities, target,
+                             score_sign, 1.0e-6, 50)
+                       : sceptre::crt_spa_full(
+                             a, w, Z, fitted_probabilities, target,
+                             score_sign, 1.0e-9, 50);
+      converged = list_bool_or_false(spa_diagnostics, "converged");
       spa_converged[0] = converged;
-      spa_reason = list_string_or(spa_result, "reason", "unknown_failure");
-      spa_iterations = list_int_or_na(spa_result, "iterations");
-      spa_max_residual = list_double_or_na(spa_result, "max_residual");
-      spa_rate = list_double_or_na(spa_result, "rate");
-      spa_r_lr = list_double_or_na(spa_result, "r_lr");
-      spa_q_lr = list_double_or_na(spa_result, "q_lr");
+      spa_reason = list_string_or(
+          spa_diagnostics, "reason", "unknown_failure");
+      spa_iterations = list_int_or_na(spa_diagnostics, "iterations");
+      spa_max_residual = list_double_or_na(
+          spa_diagnostics, "max_residual");
+      spa_rate = list_double_or_na(spa_diagnostics, "rate");
+      spa_r_lr = list_double_or_na(spa_diagnostics, "r_lr");
+      spa_q_lr = list_double_or_na(spa_diagnostics, "q_lr");
     } catch (const std::exception& error) {
       spa_converged[0] = false;
       spa_reason = std::string("input_or_solver_error: ") + error.what();
+      spa_diagnostics = List::create(
+          Named("converged") = false,
+          Named("reason") = spa_reason);
     } catch (...) {
       spa_converged[0] = false;
       spa_reason = "input_or_solver_error: unknown exception";
+      spa_diagnostics = List::create(
+          Named("converged") = false,
+          Named("reason") = spa_reason);
     }
 
-    const double spa_p = list_double_or_na(spa_result, "p_value");
+    const double spa_p = list_double_or_na(spa_diagnostics, "p_value");
     if (converged && std::isfinite(spa_p) && spa_p >= 0.0 && spa_p <= 1.0) {
       p = std::max(kMinimumPValue,
                    std::min(1.0, sidedness_multiplier * spa_p));
       stage = 2;
-      p_value_source = "crt_spa";
+      p_value_source = use_fast ? "crt_spa_fast" : "crt_spa";
     } else {
       null_statistics = compute_null_full_statistics(
           a, w, D, B1, B2, n_trt, use_all_cells, synthetic_idxs);
@@ -332,13 +349,15 @@ SEXP run_low_level_test_full_crt_spa_v1(
       Named("stage") = stage,
       Named("sn_params") = sn_params,
       Named("p_value_source") = p_value_source,
+      Named("spa_fast") = use_fast,
       Named("spa_converged") = spa_converged,
       Named("spa_reason") = spa_reason,
       Named("spa_iterations") = spa_iterations,
       Named("spa_max_residual") = spa_max_residual,
       Named("spa_rate") = spa_rate,
       Named("spa_r_lr") = spa_r_lr,
-      Named("spa_q_lr") = spa_q_lr);
+      Named("spa_q_lr") = spa_q_lr,
+      Named("spa_diagnostics") = spa_diagnostics);
   if (return_resampling_dist) out["resampling_dist"] = null_statistics;
   return out;
 }
@@ -360,7 +379,8 @@ SEXP run_low_level_test_full_crt_spa_always_v1(
     IntegerVector trt_idxs,
     int n_trt,
     int side_code,
-    int max_iterations = 50) {
+    int max_iterations = 50,
+    bool use_fast = false) {
   if (side_code < -1 || side_code > 1) {
     stop("side_code must be -1, 0, or 1");
   }
@@ -396,9 +416,13 @@ SEXP run_low_level_test_full_crt_spa_always_v1(
                                y, mu, trt_idxs, n_trt);
   List spa_diagnostics;
   try {
-    spa_diagnostics = sceptre::crt_spa_full_outward(
-        a, w, Z, fitted_probabilities, trt_idxs, 1.0e-9,
-        max_iterations);
+    spa_diagnostics = use_fast
+                          ? sceptre::crt_spa_full_outward_fast(
+                                a, w, Z, fitted_probabilities, trt_idxs,
+                                1.0e-6, max_iterations)
+                          : sceptre::crt_spa_full_outward(
+                                a, w, Z, fitted_probabilities, trt_idxs,
+                                1.0e-9, max_iterations);
   } catch (const std::exception& error) {
     // Dimension/design errors are programming/input errors and should retain
     // their precise native message.  Regular solver failures are already
@@ -444,7 +468,8 @@ SEXP run_low_level_test_full_crt_spa_always_v1(
     }
     if (std::isfinite(requested_p)) {
       p = std::max(kMinimumPValue, std::min(1.0, requested_p));
-      p_value_source = "crt_spa_always";
+      p_value_source = use_fast ? "crt_spa_always_fast"
+                                : "crt_spa_always";
       needs_empirical_fallback = false;
     }
   }
@@ -458,6 +483,7 @@ SEXP run_low_level_test_full_crt_spa_always_v1(
       Named("stage") = 2,
       Named("sn_params") = sn_params,
       Named("p_value_source") = p_value_source,
+      Named("spa_fast") = use_fast,
       Named("needs_empirical_fallback") = needs_empirical_fallback,
       Named("statistic_id") = kStatisticId,
       Named("equation_id") = kEquationId,

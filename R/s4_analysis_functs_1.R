@@ -10,7 +10,7 @@
 #' @param formula_object (optional) a formula object specifying how to adjust for the covariates in the model
 #' @param side (optional; default `"both"`) the sidedness of the test, one of `"left"`, `"right"`, or `"both"`
 #' @param grna_integration_strategy (optional; default `"union"`) a string specifying the gRNA integration strategy, either `"singleton"`, `"union"`, or `"bonferroni"`
-#' @param resampling_approximation (optional; default `"skew_normal"`) a string indicating the resampling approximation to make to the null distribution of test statistics, one of `"skew_normal"`, `"no_approximation"`, `"crt_spa"`, `"crt_spa_always"`, `"crt_spa_empirical"`, or `"crt_spa_empirical_always"`. The `"crt_spa"` option uses a full-Newton information-studentized saddlepoint approximation after the existing 499-resample tail screen and falls back to 4,999 empirical CRT resamples if the solver fails. The `"crt_spa_always"` option attempts that information-studentized SPA for every QC-passing pair and lazily generates a 4,999-resample empirical fallback bank only after an SPA attempt fails. The `"crt_spa_empirical"` option uses an experimental directional-tangent SPA for the empirically studentized CRT statistic, with the same tail screen and empirical fallback. The `"crt_spa_empirical_always"` option attempts that empirically studentized SPA for every pair with the same lazy fallback strategy. All saddlepoint options are available only with `resampling_mechanism = "crt"`.
+#' @param resampling_approximation (optional; default `"skew_normal"`) a string indicating the resampling approximation to make to the null distribution of test statistics, one of `"skew_normal"`, `"no_approximation"`, `"crt_spa"`, `"crt_spa_always"`, `"crt_spa_empirical"`, `"crt_spa_empirical_always"`, `"crt_spa_fast"`, `"crt_spa_always_fast"`, `"crt_spa_empirical_fast"`, or `"crt_spa_empirical_always_fast"`. The `"crt_spa"` option uses a full-Newton information-studentized saddlepoint approximation after the existing 499-resample tail screen and falls back to 4,999 empirical CRT resamples if the solver fails. The `"crt_spa_always"` option attempts that information-studentized SPA for every QC-passing pair and lazily generates a 4,999-resample empirical fallback bank only after an SPA attempt fails. The `"crt_spa_empirical"` and `"crt_spa_empirical_always"` options apply the analogous adaptive and SPA-first strategies to the empirically studentized CRT statistic. Appending `"_fast"` selects the corresponding partial-normal CGF acceleration while preserving the base method's resampling and fallback strategy. The fast partition begins with roughly the highest-leverage 10 percent of cells as exact Bernoulli terms (including ties), then promotes any Gaussian-block cell whose absolute saddlepoint tilt exceeds 0.25 and re-solves until the partition is safe. It requires at least half of the cells to remain in the moment-matched Gaussian block and requests the ordinary empirical fallback if that limit is reached or the directional Berry--Esseen bound exceeds 0.25. All saddlepoint options are available only with `resampling_mechanism = "crt"`.
 #' @param control_group (optional) a string specifying the control group to use in the differential expression analysis, either `"complement"` or `"nt_cells"`
 #' @param resampling_mechanism (optional) a string specifying the resampling mechanism to use, either `"permutations"` or `"crt"`
 #' @param multiple_testing_method (optional; default `"BH"`) a string specifying the multiple testing correction method to use; see `p.adjust.methods` for options
@@ -79,17 +79,16 @@ set_analysis_parameters <- function(sceptre_object,
   if (resampling_approximation == "skew_normal") {
     B2 <- 4999L
     B3 <- if (resampling_mechanism == "permutations") 24999L else 0L
-  } else if (resampling_approximation == "crt_spa") {
+  } else if (resampling_approximation %in% c(
+    "crt_spa", "crt_spa_fast", "crt_spa_empirical",
+    "crt_spa_empirical_fast"
+  )) {
     B2 <- 4999L # empirical fallback if the saddlepoint solver fails
     B3 <- 0L
-  } else if (resampling_approximation == "crt_spa_always") {
-    B1 <- 0L # no central empirical screen; run SPA for every pair
-    B2 <- 4999L # lazily generated empirical fallback if SPA fails
-    B3 <- 0L
-  } else if (resampling_approximation == "crt_spa_empirical") {
-    B2 <- 4999L # empirical fallback if the saddlepoint solver fails
-    B3 <- 0L
-  } else if (resampling_approximation == "crt_spa_empirical_always") {
+  } else if (resampling_approximation %in% c(
+    "crt_spa_always", "crt_spa_always_fast",
+    "crt_spa_empirical_always", "crt_spa_empirical_always_fast"
+  )) {
     B1 <- 0L # no central empirical screen; run SPA for every pair
     B2 <- 4999L # lazily generated empirical fallback if SPA fails
     B3 <- 0L

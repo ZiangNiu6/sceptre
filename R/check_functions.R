@@ -202,20 +202,26 @@ check_set_analysis_parameters <- function(sceptre_object, formula_object, respon
   }
 
   # 11. verify resampling_approximation acceptable
-  if (!(resampling_approximation %in% c("skew_normal", "no_approximation", "crt_spa", "crt_spa_always", "crt_spa_empirical", "crt_spa_empirical_always"))) {
-    stop("`resampling_approximation` must be set to 'skew_normal', 'no_approximation', 'crt_spa', 'crt_spa_always', 'crt_spa_empirical', or 'crt_spa_empirical_always'.")
+  crt_spa_approximations <- c(
+    "crt_spa", "crt_spa_always", "crt_spa_empirical",
+    "crt_spa_empirical_always", "crt_spa_fast", "crt_spa_always_fast",
+    "crt_spa_empirical_fast", "crt_spa_empirical_always_fast"
+  )
+  valid_resampling_approximations <- c(
+    "skew_normal", "no_approximation", crt_spa_approximations
+  )
+  if (!(resampling_approximation %in% valid_resampling_approximations)) {
+    stop(
+      "`resampling_approximation` must be set to one of ",
+      paste(shQuote(valid_resampling_approximations), collapse = ", "), "."
+    )
   }
-  if (resampling_approximation == "crt_spa" && resampling_mechanism != "crt") {
-    stop("`resampling_approximation = 'crt_spa'` is available only when `resampling_mechanism = 'crt'`.")
-  }
-  if (resampling_approximation == "crt_spa_always" && resampling_mechanism != "crt") {
-    stop("`resampling_approximation = 'crt_spa_always'` is available only when `resampling_mechanism = 'crt'`.")
-  }
-  if (resampling_approximation == "crt_spa_empirical" && resampling_mechanism != "crt") {
-    stop("`resampling_approximation = 'crt_spa_empirical'` is available only when `resampling_mechanism = 'crt'`.")
-  }
-  if (resampling_approximation == "crt_spa_empirical_always" && resampling_mechanism != "crt") {
-    stop("`resampling_approximation = 'crt_spa_empirical_always'` is available only when `resampling_mechanism = 'crt'`.")
+  if (resampling_approximation %in% crt_spa_approximations &&
+      resampling_mechanism != "crt") {
+    stop(
+      "`resampling_approximation = '", resampling_approximation,
+      "'` is available only when `resampling_mechanism = 'crt'`."
+    )
   }
 
   return(NULL)

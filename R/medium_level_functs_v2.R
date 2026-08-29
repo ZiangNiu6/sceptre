@@ -142,10 +142,14 @@ run_crt_in_memory_v2 <- function(response_matrix, grna_assignments, covariate_ma
   get_idx_f <- get_idx_vector_factory(calibration_check, indiv_nt_grna_idxs, grna_group_idxs, low_moi)
   response_ids <- unique(response_grna_group_pairs$response_id)
   fit_parametric_curve <- (resampling_approximation == "skew_normal")
-  use_crt_spa <- (resampling_approximation == "crt_spa")
-  use_crt_spa_always <- (resampling_approximation == "crt_spa_always")
-  use_crt_spa_empirical <- (resampling_approximation == "crt_spa_empirical")
-  use_crt_spa_empirical_always <- (resampling_approximation == "crt_spa_empirical_always")
+  use_fast <- grepl("_fast$", resampling_approximation)
+  resampling_approximation_base <- sub(
+    "_fast$", "", resampling_approximation
+  )
+  use_crt_spa <- (resampling_approximation_base == "crt_spa")
+  use_crt_spa_always <- (resampling_approximation_base == "crt_spa_always")
+  use_crt_spa_empirical <- (resampling_approximation_base == "crt_spa_empirical")
+  use_crt_spa_empirical_always <- (resampling_approximation_base == "crt_spa_empirical_always")
 
   # 1. subset covariate matrix to cells_in_use and then to nt cells (if applicable)
   covariate_matrix <- covariate_matrix[cells_in_use,,drop=FALSE]
@@ -233,7 +237,7 @@ run_crt_in_memory_v2 <- function(response_matrix, grna_assignments, covariate_ma
           use_crt_spa_empirical_always, output_amount,
           response_ids, response_precomputations, covariate_matrix,
           get_idx_f, curr_grna_group, subset_to_nt_cells, all_nt_idxs,
-          response_matrix, side_code, cells_in_use
+          response_matrix, side_code, cells_in_use, use_fast = use_fast
         )
       } else {
         curr_response_result <- discovery_ntcells_crt(
@@ -241,7 +245,7 @@ run_crt_in_memory_v2 <- function(response_matrix, grna_assignments, covariate_ma
           use_crt_spa_empirical,
           use_crt_spa_empirical_always, output_amount, get_idx_f,
           response_ids, covariate_matrix, curr_grna_group, all_nt_idxs,
-          response_matrix, side_code, cells_in_use
+          response_matrix, side_code, cells_in_use, use_fast = use_fast
         )
       }
       result_out_list[[grna_group_idx]] <- construct_data_frame_v2(curr_df, curr_response_result, output_amount)

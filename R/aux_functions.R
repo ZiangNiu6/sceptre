@@ -10,6 +10,7 @@ construct_data_frame_v2 <- function(curr_df, curr_response_result, output_amount
 
     optional_diagnostic_types <- list(
       p_value_source = NA_character_,
+      spa_fast = NA,
       spa_converged = NA,
       spa_reason = NA_character_,
       spa_iterations = NA_integer_,
