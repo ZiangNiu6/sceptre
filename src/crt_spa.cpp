@@ -701,7 +701,7 @@ Rcpp::List crt_spa_full_cpp(const Rcpp::NumericVector& a,
                             const Rcpp::NumericVector& propensity,
                             const double target,
                             const int score_sign = 1,
-                            const double tolerance = 1e-9,
+                            const double tolerance = 1e-5,
                             const int max_iterations = 50) {
   return sceptre::crt_spa_full(a, w, Z, propensity, target, score_sign,
                                tolerance, max_iterations);

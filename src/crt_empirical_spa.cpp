@@ -703,7 +703,7 @@ Rcpp::List crt_empirical_spa_full_cpp(
     const Rcpp::NumericVector& propensity,
     const double target,
     const int score_sign = 1,
-    const double tolerance = 1e-9,
+    const double tolerance = 1e-5,
     const int max_iterations = 60,
     const int max_backtracks = 24) {
   return sceptre::crt_empirical_spa_full(

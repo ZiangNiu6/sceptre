@@ -38,6 +38,7 @@ namespace {
 
 constexpr double kTailTrigger = 0.02;
 constexpr double kMinimumPValue = 1.0e-250;
+constexpr double kSpaRootTolerance = 1.0e-5;
 constexpr const char* kStatisticId = "information_studentized_crt_v1";
 constexpr const char* kEquationId = "crt_information_full_kkt_v1";
 constexpr const char* kTailGeometry =
@@ -296,11 +297,11 @@ SEXP run_low_level_test_full_crt_spa_v1(
     try {
       spa_diagnostics = use_fast
                        ? sceptre::crt_spa_full_fast(
-                             a, w, Z, fitted_probabilities, target,
-                             score_sign, 1.0e-6, 50)
+                             a, w, y, Z, fitted_probabilities, target,
+                             score_sign, kSpaRootTolerance, 50)
                        : sceptre::crt_spa_full(
                              a, w, Z, fitted_probabilities, target,
-                             score_sign, 1.0e-9, 50);
+                             score_sign, kSpaRootTolerance, 50);
       converged = list_bool_or_false(spa_diagnostics, "converged");
       spa_converged[0] = converged;
       spa_reason = list_string_or(
@@ -418,11 +419,11 @@ SEXP run_low_level_test_full_crt_spa_always_v1(
   try {
     spa_diagnostics = use_fast
                           ? sceptre::crt_spa_full_outward_fast(
-                                a, w, Z, fitted_probabilities, trt_idxs,
-                                1.0e-6, max_iterations)
+                                a, w, y, Z, fitted_probabilities, trt_idxs,
+                                kSpaRootTolerance, max_iterations)
                           : sceptre::crt_spa_full_outward(
                                 a, w, Z, fitted_probabilities, trt_idxs,
-                                1.0e-9, max_iterations);
+                                kSpaRootTolerance, max_iterations);
   } catch (const std::exception& error) {
     // Dimension/design errors are programming/input errors and should retain
     // their precise native message.  Regular solver failures are already

@@ -342,18 +342,28 @@ test_that("forced information SPA failure finalizes with the B2 bank", {
   fixture <- .info_always_fixture()
   attempt <- .run_info_always_spa(
     fixture,
-    max_iterations = 0L
+    max_iterations = 0L,
+    use_fast = TRUE
   )
 
   expect_identical(attempt$stage, 2L)
   expect_identical(attempt$p_value_source, "B2_empirical_pending")
   expect_true(attempt$needs_empirical_fallback)
   expect_false(attempt$spa_converged)
+  expect_true(attempt$spa_fast)
   expect_identical(
     attempt$spa_reason,
     "solver_disabled_max_iterations_zero"
   )
   expect_length(attempt$resampling_dist, 0L)
+  expect_identical(
+    attempt$spa_diagnostics$initial_exact_count,
+    sum(fixture$y > 0)
+  )
+  expect_identical(
+    attempt$spa_diagnostics$initial_bulk_count,
+    sum(fixture$y == 0)
+  )
 
   set.seed(20260910)
   B2 <- 399L
@@ -396,9 +406,18 @@ test_that("forced information SPA failure finalizes with the B2 bank", {
   expect_identical(result$p_value_source, "B2_empirical")
   expect_false(result$needs_empirical_fallback)
   expect_false(result$spa_converged)
+  expect_true(result$spa_fast)
   expect_identical(
     result$spa_reason,
     "solver_disabled_max_iterations_zero"
+  )
+  expect_identical(
+    result$spa_diagnostics$initial_exact_count,
+    attempt$spa_diagnostics$initial_exact_count
+  )
+  expect_identical(
+    result$spa_diagnostics$initial_bulk_count,
+    attempt$spa_diagnostics$initial_bulk_count
   )
   expect_equal(
     result$resampling_dist,

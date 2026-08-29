@@ -254,7 +254,7 @@ test_that("Full Newton CRT-SPA returns a certified in-range tail probability", {
   expect_gte(result$p_value, 0)
   expect_lte(result$p_value, 1)
   expect_gt(result$target, result$center)
-  expect_lte(result$max_residual, 1e-8)
+  expect_lte(result$max_residual, 1e-5)
   expect_identical(result$moment_dimension, ncol(fixture$Z) + 1L)
   expect_identical(result$nuisance_dimension, ncol(fixture$Z))
 })

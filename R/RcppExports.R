@@ -21,24 +21,24 @@ estimate_theta <- function(y, mu, dfr, limit, eps) {
     .Call(`_sceptre_estimate_theta`, y, mu, dfr, limit, eps)
 }
 
-crt_empirical_spa_full_cpp <- function(a, propensity, target, score_sign = 1L, tolerance = 1e-9, max_iterations = 60L, max_backtracks = 24L) {
+crt_empirical_spa_full_cpp <- function(a, propensity, target, score_sign = 1L, tolerance = 1e-5, max_iterations = 60L, max_backtracks = 24L) {
     .Call(`_sceptre_crt_empirical_spa_full_cpp`, a, propensity, target, score_sign, tolerance, max_iterations, max_backtracks)
 }
 
-crt_empirical_spa_full_fast_cpp <- function(a, propensity, target, score_sign = 1L, tolerance = 1e-6, max_iterations = 60L, max_backtracks = 24L) {
-    .Call(`_sceptre_crt_empirical_spa_full_fast_cpp`, a, propensity, target, score_sign, tolerance, max_iterations, max_backtracks)
+crt_empirical_spa_full_fast_cpp <- function(a, propensity, y, target, score_sign = 1L, tolerance = 1e-5, max_iterations = 60L, max_backtracks = 24L) {
+    .Call(`_sceptre_crt_empirical_spa_full_fast_cpp`, a, propensity, y, target, score_sign, tolerance, max_iterations, max_backtracks)
 }
 
-crt_spa_full_cpp <- function(a, w, Z, propensity, target, score_sign = 1L, tolerance = 1e-9, max_iterations = 50L) {
+crt_spa_full_cpp <- function(a, w, Z, propensity, target, score_sign = 1L, tolerance = 1e-5, max_iterations = 50L) {
     .Call(`_sceptre_crt_spa_full_cpp`, a, w, Z, propensity, target, score_sign, tolerance, max_iterations)
 }
 
-crt_spa_full_fast_cpp <- function(a, w, Z, propensity, target, score_sign = 1L, tolerance = 1e-6, max_iterations = 50L) {
-    .Call(`_sceptre_crt_spa_full_fast_cpp`, a, w, Z, propensity, target, score_sign, tolerance, max_iterations)
+crt_spa_full_fast_cpp <- function(a, w, y, Z, propensity, target, score_sign = 1L, tolerance = 1e-5, max_iterations = 50L) {
+    .Call(`_sceptre_crt_spa_full_fast_cpp`, a, w, y, Z, propensity, target, score_sign, tolerance, max_iterations)
 }
 
-crt_spa_full_outward_fast_cpp <- function(a, w, Z, propensity, treated_indices, tolerance = 1e-6, max_iterations = 50L) {
-    .Call(`_sceptre_crt_spa_full_outward_fast_cpp`, a, w, Z, propensity, treated_indices, tolerance, max_iterations)
+crt_spa_full_outward_fast_cpp <- function(a, w, y, Z, propensity, treated_indices, tolerance = 1e-5, max_iterations = 50L) {
+    .Call(`_sceptre_crt_spa_full_outward_fast_cpp`, a, w, y, Z, propensity, treated_indices, tolerance, max_iterations)
 }
 
 #' @title Fisher-Yates sampler

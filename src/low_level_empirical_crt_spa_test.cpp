@@ -27,6 +27,7 @@ namespace {
 
 constexpr double kTailTrigger = 0.02;
 constexpr double kMinimumPValue = 1.0e-250;
+constexpr double kSpaRootTolerance = 1.0e-5;
 constexpr const char* kStatisticId = "empirical_studentized_crt_v1";
 constexpr const char* kEquationId = "crt_studentized_reduced_root_v1";
 constexpr const char* kTailGeometry =
@@ -376,11 +377,13 @@ SEXP run_low_level_test_full_crt_spa_empirical_v1(
     try {
       spa_diagnostics = use_fast
                             ? sceptre::crt_empirical_spa_full_fast(
-                                  a, fitted_probabilities, target,
-                                  score_sign, 1.0e-6, max_iterations, 24)
+                                  a, fitted_probabilities, y, target,
+                                  score_sign, kSpaRootTolerance,
+                                  max_iterations, 24)
                             : sceptre::crt_empirical_spa_full(
                                   a, fitted_probabilities, target,
-                                  score_sign, 1.0e-9, max_iterations, 24);
+                                  score_sign, kSpaRootTolerance,
+                                  max_iterations, 24);
       converged = list_bool_or_false(spa_diagnostics, "converged");
       spa_converged[0] = converged;
       spa_reason = list_string_or(
@@ -601,11 +604,13 @@ SEXP run_low_level_test_full_crt_spa_empirical_always_v1(
     try {
       spa_diagnostics = use_fast
                             ? sceptre::crt_empirical_spa_full_fast(
-                                  a, fitted_probabilities, target,
-                                  score_sign, 1.0e-6, max_iterations, 24)
+                                  a, fitted_probabilities, y, target,
+                                  score_sign, kSpaRootTolerance,
+                                  max_iterations, 24)
                             : sceptre::crt_empirical_spa_full(
                                   a, fitted_probabilities, target,
-                                  score_sign, 1.0e-9, max_iterations, 24);
+                                  score_sign, kSpaRootTolerance,
+                                  max_iterations, 24);
       converged = list_bool_or_false(spa_diagnostics, "converged");
       spa_converged[0] = converged;
       spa_reason = list_string_or(

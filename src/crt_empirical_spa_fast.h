@@ -6,14 +6,15 @@
 namespace sceptre {
 
 // Partial-normal fastSPA analogue for the empirically studentized CRT
-// statistic. High-influence Bernoulli terms remain exact and the remaining
-// terms are replaced by their moment-matched joint Gaussian CGF.
+// statistic. Positive-outcome rows remain exact and zero-outcome rows are
+// replaced by their moment-matched joint Gaussian CGF unless promoted.
 Rcpp::List crt_empirical_spa_full_fast(
     const Rcpp::NumericVector& a,
     const Rcpp::NumericVector& propensity,
+    const Rcpp::NumericVector& y,
     double target,
     int score_sign = 1,
-    double tolerance = 1e-6,
+    double tolerance = 1e-5,
     int max_iterations = 60,
     int max_backtracks = 24);
 

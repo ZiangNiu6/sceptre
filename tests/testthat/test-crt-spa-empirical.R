@@ -558,7 +558,7 @@ test_that("the empirical low-level path uses Full Newton at stage two", {
   expect_true(is.finite(result$p))
   expect_gte(result$p, 0)
   expect_lte(result$p, 1)
-  expect_lte(result$spa_max_residual, 1e-8)
+  expect_lte(result$spa_max_residual, 1e-5)
 })
 
 test_that("forced empirical CRT-SPA failure uses the independent B2 bank", {

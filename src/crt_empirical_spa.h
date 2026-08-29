@@ -13,7 +13,7 @@ Rcpp::List crt_empirical_spa_full(
     const Rcpp::NumericVector& propensity,
     double target,
     int score_sign = 1,
-    double tolerance = 1e-9,
+    double tolerance = 1e-5,
     int max_iterations = 60,
     int max_backtracks = 24);
 

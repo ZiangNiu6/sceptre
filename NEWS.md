@@ -1,5 +1,16 @@
 # sceptre development version
 
+- Unified the Newton root stopping tolerance across exact and partial-normal
+  information- and empirical-studentized CRT-SPA solvers at `1e-5`. This does
+  not change the Berry--Esseen or maximum-tilt safety thresholds used by the
+  partial-normal approximations.
+
+- Updated all partial-normal CRT-SPA `"_fast"` modes to use the sparse-outcome
+  partition from the fastSPA writeup: cells with nonzero observed response are
+  retained as exact Bernoulli terms, while the zero-response block is
+  Gaussianized and refined by target-tilt promotion. The previous covariance-
+  leverage ranking and 50-percent bulk-size restriction have been removed.
+
 - Added an opt-in `resampling_approximation = "crt_spa_empirical"` mode for
   conditional randomization tests. The mode recomputes the empirical
   studentizer for the observed assignment and every resample, uses the exact

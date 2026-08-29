@@ -1,16 +1,14 @@
 // Partial-normal fastSPA analogue for the empirically studentized CRT
 // statistic S / sqrt(Q - S^2 / n).
 //
-// Original GWAS fastSPA can retain the fixed, sparse variant carriers.  The
-// CRT treatment assignment is itself random, so it cannot define that fixed
-// carrier set.  This adaptation instead uses joint null-covariance leverage.
-//
-// The initial exact set is selected from null-law covariance leverage, without
-// consulting the observed treatment vector. After a provisional root solve,
-// bulk rows whose target-direction tilt is too large are promoted into the
-// exact block and the root is re-solved. The remaining joint two-coordinate
-// contribution is replaced by the normal CGF having the same null mean and
-// covariance.
+// The fixed sparse-outcome partition follows the studentization writeup:
+// positive-outcome rows are evaluated as exact Bernoulli terms and zero-
+// outcome rows form the moment-matched Gaussian block.  This partition uses
+// the fixed observed response, never the random CRT treatment assignment.
+// After a provisional root solve, zero-outcome rows whose target-direction
+// tilt is too large are promoted into the exact block and the root is
+// re-solved.  Promotion is allowed to exhaust the Gaussian block, in which
+// case the calculation is the exact Bernoulli solver.
 //
 // [[Rcpp::depends(RcppEigen)]]
 
@@ -22,7 +20,6 @@
 #include <cmath>
 #include <iterator>
 #include <limits>
-#include <numeric>
 #include <string>
 #include <utility>
 #include <vector>
@@ -81,35 +78,21 @@ struct EmpiricalFastCache {
   double qc = 0.0;
   std::vector<int> exact_indices;
   std::vector<int> bulk_indices;
+  int initial_exact_count = 0;
+  int initial_bulk_count = 0;
   // Stored for score_sign = +1. The sign is applied by congruence when the
   // CGF is evaluated, so the partition itself is independent of tail side.
   Vector2d bulk_mean = Vector2d::Zero();
   Matrix2d bulk_covariance = Matrix2d::Zero();
 };
 
-Matrix2d covariance_pseudoinverse(const Matrix2d& covariance) {
-  Matrix2d inverse = Matrix2d::Zero();
-  if (!covariance.allFinite()) return inverse;
-  Eigen::SelfAdjointEigenSolver<Matrix2d> decomposition(covariance);
-  if (decomposition.info() != Eigen::Success) return inverse;
-  const Eigen::Vector2d eigenvalues = decomposition.eigenvalues();
-  const double largest = std::max(0.0, eigenvalues.maxCoeff());
-  if (largest <= 0.0) return inverse;
-  Eigen::Vector2d reciprocal = Eigen::Vector2d::Zero();
-  const double cutoff = 1e-10 * largest;
-  for (int j = 0; j < 2; ++j) {
-    if (eigenvalues[j] > cutoff) reciprocal[j] = 1.0 / eigenvalues[j];
-  }
-  inverse = decomposition.eigenvectors() * reciprocal.asDiagonal() *
-            decomposition.eigenvectors().transpose();
-  return inverse;
-}
-
 EmpiricalFastCache build_cache(const Rcpp::NumericVector& a,
-                               const Rcpp::NumericVector& propensity) {
+                               const Rcpp::NumericVector& propensity,
+                               const Rcpp::NumericVector& y) {
   const int n = a.size();
-  if (n < 2 || propensity.size() != n) {
-    Rcpp::stop("a and propensity must have the same length of at least two");
+  if (n < 2 || propensity.size() != n || y.size() != n) {
+    Rcpp::stop(
+        "a, propensity, and y must have the same length of at least two");
   }
 
   EmpiricalFastCache cache;
@@ -122,15 +105,18 @@ EmpiricalFastCache build_cache(const Rcpp::NumericVector& a,
   for (int i = 0; i < n; ++i) {
     const double ai = a[i];
     const double p = propensity[i];
+    const double yi = y[i];
     if (!std::isfinite(ai)) Rcpp::stop("a must be finite");
     if (!std::isfinite(p) || p < 0.0 || p > 1.0) {
       Rcpp::stop("propensity must be finite and lie in [0, 1]");
+    }
+    if (!std::isfinite(yi) || yi < 0.0) {
+      Rcpp::stop("y must be finite and nonnegative");
     }
     score_scale = std::max(score_scale, std::abs(ai));
   }
 
   cache.score_scale = score_scale > 0.0 ? score_scale : 1.0;
-  Matrix2d full_covariance = Matrix2d::Zero();
   for (int i = 0; i < n; ++i) {
     const double ai = a[i] / cache.score_scale;
     const double p = propensity[i];
@@ -146,58 +132,18 @@ EmpiricalFastCache build_cache(const Rcpp::NumericVector& a,
         (p > 0.0 && p < 1.0) ? std::log(p) - std::log1p(-p) : 0.0;
     cache.sc -= p * ai;
     cache.qc += p * p * a2;
-    const Vector2d g(ai, di);
-    full_covariance.noalias() += p * (1.0 - p) * (g * g.transpose());
   }
-  if (!std::isfinite(cache.sc) || !std::isfinite(cache.qc) ||
-      !full_covariance.allFinite()) {
+  if (!std::isfinite(cache.sc) || !std::isfinite(cache.qc)) {
     Rcpp::stop("empirical CRT fast-cache quantities must be finite");
   }
 
-  // Covariance leverage is dimensionless and invariant to separate positive
-  // rescalings of the two statistic coordinates. A pseudoinverse also makes
-  // the ranking well-defined when one coordinate is null or collinear.
-  const Matrix2d covariance_inverse =
-      covariance_pseudoinverse(full_covariance);
-  std::vector<std::pair<double, int> > ranked;
-  ranked.reserve(n);
+  cache.exact_indices.reserve(n);
+  cache.bulk_indices.reserve(n);
   for (int i = 0; i < n; ++i) {
-    const Vector2d g(cache.a[i], cache.d[i]);
-    double leverage = cache.propensity[i] * (1.0 - cache.propensity[i]) *
-                      g.dot(covariance_inverse * g);
-    if (!std::isfinite(leverage) || leverage < 0.0) leverage = 0.0;
-    ranked.emplace_back(leverage, i);
-  }
-  const int requested_exact =
-      std::max(32, static_cast<int>(std::ceil(0.10 * n)));
-  const int target_exact_count = std::min(n / 2, requested_exact);
-  const auto higher_leverage =
-      [](const std::pair<double, int>& lhs,
-         const std::pair<double, int>& rhs) {
-        return lhs.first > rhs.first;
-      };
-  std::nth_element(ranked.begin(), ranked.begin() + target_exact_count - 1,
-                   ranked.end(), higher_leverage);
-  const double boundary_leverage =
-      ranked[target_exact_count - 1].first;
-  const double tie_tolerance =
-      1.0e-12 * std::max(1.0, std::abs(boundary_leverage));
-  std::vector<unsigned char> is_exact(n, 0);
-  cache.exact_indices.reserve(target_exact_count);
-  for (const std::pair<double, int>& item : ranked) {
-    if (item.first + tie_tolerance < boundary_leverage) continue;
-    is_exact[item.second] = 1;
-    cache.exact_indices.push_back(item.second);
-  }
-  if (cache.exact_indices.size() * 2U > static_cast<unsigned>(n)) {
-    return cache;
-  }
-  // Keep both index vectors in row order. This gives deterministic floating-
-  // point accumulation independent of sort implementation details.
-  std::sort(cache.exact_indices.begin(), cache.exact_indices.end());
-  cache.bulk_indices.reserve(n - cache.exact_indices.size());
-  for (int i = 0; i < n; ++i) {
-    if (is_exact[i]) continue;
+    if (y[i] > 0.0) {
+      cache.exact_indices.push_back(i);
+      continue;
+    }
     cache.bulk_indices.push_back(i);
     const Vector2d g(cache.a[i], cache.d[i]);
     const double p = cache.propensity[i];
@@ -205,8 +151,9 @@ EmpiricalFastCache build_cache(const Rcpp::NumericVector& a,
     cache.bulk_covariance.noalias() +=
         p * (1.0 - p) * (g * g.transpose());
   }
-  if (cache.bulk_indices.size() < static_cast<std::size_t>((n + 1) / 2) ||
-      !cache.bulk_mean.allFinite() || !cache.bulk_covariance.allFinite()) {
+  cache.initial_exact_count = static_cast<int>(cache.exact_indices.size());
+  cache.initial_bulk_count = static_cast<int>(cache.bulk_indices.size());
+  if (!cache.bulk_mean.allFinite() || !cache.bulk_covariance.allFinite()) {
     return cache;
   }
   cache.partition_valid = true;
@@ -617,8 +564,8 @@ NormalBulkDiagnostic diagnose_normal_bulk(const EmpiricalFastCache& cache,
                                           const Vector2d& theta,
                                           const int score_sign) {
   NormalBulkDiagnostic out;
-  if (!cache.partition_valid || cache.bulk_indices.empty() ||
-      !theta.allFinite() || (score_sign != -1 && score_sign != 1)) {
+  if (!cache.partition_valid || !theta.allFinite() ||
+      (score_sign != -1 && score_sign != 1)) {
     return out;
   }
   double variance = 0.0;
@@ -662,7 +609,6 @@ NormalBulkDiagnostic diagnose_normal_bulk(const EmpiricalFastCache& cache,
 struct PromotionAttempt {
   bool valid = false;
   bool made_progress = false;
-  bool exceeds_exact_fraction = false;
   int promoted_count = 0;
 };
 
@@ -699,10 +645,6 @@ PromotionAttempt promote_unsafe_bulk_rows(EmpiricalFastCache& cache,
   if (promoted_indices.empty()) return out;
   const std::size_t new_exact_count =
       cache.exact_indices.size() + promoted_indices.size();
-  if (new_exact_count * 2U > static_cast<unsigned>(cache.n)) {
-    out.exceeds_exact_fraction = true;
-    return out;
-  }
 
   std::vector<int> new_exact_indices;
   new_exact_indices.reserve(new_exact_count);
@@ -722,8 +664,7 @@ PromotionAttempt promote_unsafe_bulk_rows(EmpiricalFastCache& cache,
     new_bulk_covariance.noalias() +=
         p * (1.0 - p) * (g * g.transpose());
   }
-  if (new_bulk_indices.size() * 2U < static_cast<unsigned>(cache.n) ||
-      !new_bulk_mean.allFinite() || !new_bulk_covariance.allFinite()) {
+  if (!new_bulk_mean.allFinite() || !new_bulk_covariance.allFinite()) {
     out.valid = false;
     return out;
   }
@@ -824,12 +765,9 @@ Rcpp::List format_result(const EmpiricalFastCache& cache,
                      "fast_normal_bulk_promotion_round_limit"
                  ? "maximum_rounds"
                  : (promotion_failure_reason ==
-                            "fast_normal_bulk_promotion_exceeds_exact_fraction"
-                        ? "exact_fraction_limit"
-                        : (promotion_failure_reason ==
-                                   "fast_normal_bulk_promotion_no_progress"
-                               ? "no_progress"
-                               : "invalid_promoted_partition")))
+                            "fast_normal_bulk_promotion_no_progress"
+                        ? "no_progress"
+                        : "invalid_promoted_partition"))
           : (promotion_rounds == 0
                  ? "not_needed"
                  : (regular
@@ -875,6 +813,12 @@ Rcpp::List format_result(const EmpiricalFastCache& cache,
       static_cast<double>(exact_count) / static_cast<double>(cache.n);
   const double bulk_fraction =
       static_cast<double>(bulk_count) / static_cast<double>(cache.n);
+  const double initial_exact_fraction =
+      static_cast<double>(cache.initial_exact_count) /
+      static_cast<double>(cache.n);
+  const double initial_bulk_fraction =
+      static_cast<double>(cache.initial_bulk_count) /
+      static_cast<double>(cache.n);
 
   return Rcpp::List::create(
       Rcpp::Named("converged") = regular,
@@ -925,9 +869,17 @@ Rcpp::List format_result(const EmpiricalFastCache& cache,
       Rcpp::Named("path") = "partial_normal_fast_bernoulli_2d_newton",
       Rcpp::Named("solver") = "full_line_search_newton",
       Rcpp::Named("cgf_evaluation") =
-          "exact_high_influence_plus_moment_matched_gaussian_bulk_2d",
+          "exact_positive_outcome_plus_moment_matched_zero_outcome_gaussian_2d",
       Rcpp::Named("partition_rule") =
-          "joint_covariance_leverage_then_target_tilt_promotion",
+          "positive_outcome_exact_zero_outcome_gaussian_then_target_tilt_promotion",
+      Rcpp::Named("initial_partition_rule") = "E={Y>0};B={Y=0}",
+      Rcpp::Named("initial_exact_count") = cache.initial_exact_count,
+      Rcpp::Named("initial_bulk_count") = cache.initial_bulk_count,
+      Rcpp::Named("initial_exact_fraction") = initial_exact_fraction,
+      Rcpp::Named("initial_bulk_fraction") = initial_bulk_fraction,
+      Rcpp::Named("nonzero_outcome_count") = cache.initial_exact_count,
+      Rcpp::Named("positive_outcome_count") = cache.initial_exact_count,
+      Rcpp::Named("zero_outcome_count") = cache.initial_bulk_count,
       Rcpp::Named("exact_count") = exact_count,
       Rcpp::Named("bulk_count") = bulk_count,
       Rcpp::Named("exact_fraction") = exact_fraction,
@@ -954,16 +906,18 @@ Rcpp::List format_result(const EmpiricalFastCache& cache,
       Rcpp::Named("max_bulk_tilt") =
           diagnostic.valid ? diagnostic.max_abs_tilt : NA_REAL,
       Rcpp::Named("max_bulk_tilt_threshold") = kMaxBulkTiltThreshold,
-      Rcpp::Named("minimum_bulk_fraction") = 0.5,
+      Rcpp::Named("minimum_bulk_fraction") = 0.0,
+      Rcpp::Named("empty_bulk_is_exact_safe") = true,
       Rcpp::Named("approximation_safe") = regular,
       Rcpp::Named("root_certified_to_solver_tolerance") = solve.converged,
       Rcpp::Named("spa_tail_geometry") = kTailGeometry,
       Rcpp::Named("spa_experimental") = true,
       Rcpp::Named("curved_boundary_tail_correction") = false,
       Rcpp::Named("spa_diagnostic") =
-          "directional LR starts from a leverage-selected Bernoulli block, "
-          "promotes bulk rows with excessive target-direction tilt, and "
-          "requests empirical B2 fallback when the refined Gaussian block "
+          "directional LR evaluates positive-outcome rows exactly, starts "
+          "zero-outcome rows in the moment-matched Gaussian block, promotes "
+          "zero-outcome rows with excessive target-direction tilt, and "
+          "requests empirical B2 fallback when the remaining Gaussian block "
           "does not pass its diagnostics");
 }
 
@@ -974,6 +928,7 @@ namespace sceptre {
 Rcpp::List crt_empirical_spa_full_fast(
     const Rcpp::NumericVector& a,
     const Rcpp::NumericVector& propensity,
+    const Rcpp::NumericVector& y,
     const double target,
     const int score_sign,
     const double tolerance,
@@ -994,7 +949,7 @@ Rcpp::List crt_empirical_spa_full_fast(
   if (max_backtracks < 1) {
     Rcpp::stop("max_backtracks must be positive");
   }
-  EmpiricalFastCache cache = build_cache(a, propensity);
+  EmpiricalFastCache cache = build_cache(a, propensity, y);
   CrtSolve solve = solve_full(cache, target, score_sign, tolerance,
                               max_iterations, max_backtracks);
   int promotion_rounds = 0;
@@ -1022,11 +977,6 @@ Rcpp::List crt_empirical_spa_full_fast(
       promotion_failure_reason = "fast_normal_bulk_promotion_invalid";
       break;
     }
-    if (promotion.exceeds_exact_fraction) {
-      promotion_failure_reason =
-          "fast_normal_bulk_promotion_exceeds_exact_fraction";
-      break;
-    }
     if (!promotion.made_progress || promotion.promoted_count <= 0) {
       promotion_failure_reason = "fast_normal_bulk_promotion_no_progress";
       break;
@@ -1049,12 +999,13 @@ Rcpp::List crt_empirical_spa_full_fast(
 Rcpp::List crt_empirical_spa_full_fast_cpp(
     const Rcpp::NumericVector& a,
     const Rcpp::NumericVector& propensity,
+    const Rcpp::NumericVector& y,
     const double target,
     const int score_sign = 1,
-    const double tolerance = 1e-6,
+    const double tolerance = 1e-5,
     const int max_iterations = 60,
     const int max_backtracks = 24) {
   return sceptre::crt_empirical_spa_full_fast(
-      a, propensity, target, score_sign, tolerance, max_iterations,
+      a, propensity, y, target, score_sign, tolerance, max_iterations,
       max_backtracks);
 }
