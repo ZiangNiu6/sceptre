@@ -15,6 +15,7 @@
 #' @param resampling_mechanism (optional) a string specifying the resampling mechanism to use, either `"permutations"` or `"crt"`
 #' @param multiple_testing_method (optional; default `"BH"`) a string specifying the multiple testing correction method to use; see `p.adjust.methods` for options
 #' @param multiple_testing_alpha (optional; default `0.1`) a numeric specifying the nominal level of the multiple testing correction method
+#' @param response_fit_method (optional; default `"sceptre"`) the method used to fit response nuisance models. `"sceptre"` uses the existing SCEPTRE procedure: it fits Poisson regression coefficients and estimates the negative-binomial size parameter conditional on the resulting fitted means. `"glmGamPoi"` uses `glmGamPoi::glm_gp()` to fit both the regression coefficients and dispersion in bounded multi-response chunks; this option requires glmGamPoi version 1.16.0 or later. This argument changes only response nuisance fitting. SCEPTRE's score test, conditional randomization test (CRT), saddlepoint approximations (SPA), and other resampling procedures are unchanged.
 #'
 #' @return an updated `sceptre_object` in which the analysis parameters have been set
 #'
@@ -56,7 +57,8 @@ set_analysis_parameters <- function(sceptre_object,
                                     control_group = "default",
                                     resampling_mechanism = "default",
                                     multiple_testing_method = "BH",
-                                    multiple_testing_alpha = 0.1) {
+                                    multiple_testing_alpha = 0.1,
+                                    response_fit_method = "sceptre") {
   # 0. verify that function called in correct order
   sceptre_object <- perform_status_check_and_update(sceptre_object, "set_analysis_parameters")
 
@@ -109,16 +111,27 @@ set_analysis_parameters <- function(sceptre_object,
     resampling_mechanism = resampling_mechanism,
     side = side, low_moi = sceptre_object@low_moi,
     grna_integration_strategy = grna_integration_strategy,
-    resampling_approximation = resampling_approximation
+    resampling_approximation = resampling_approximation,
+    response_fit_method = response_fit_method
   ) |> invisible()
 
   # 3. determine whether to reset response precomputations
-  reset_response_precomps <- !((length(sceptre_object@formula_object) >= 2) &&
+  formula_changed <- !((length(sceptre_object@formula_object) >= 2) &&
     identical(sceptre_object@formula_object[[2L]], formula_object[[2L]]))
+  response_fit_method_changed <- !identical(
+    get_response_fit_method(sceptre_object),
+    response_fit_method
+  )
+  control_group_complement <- control_group == "complement"
+  control_group_changed <- !identical(
+    sceptre_object@control_group_complement,
+    control_group_complement
+  )
+  reset_response_precomps <- formula_changed || response_fit_method_changed ||
+    control_group_changed
 
   # 4. update uncached fields of the sceptre object
   side_code <- which(side == c("left", "both", "right")) - 2L
-  control_group_complement <- control_group == "complement"
   run_permutations <- resampling_mechanism == "permutations"
   sceptre_object@discovery_pairs <- discovery_pairs |> dplyr::mutate(grna_target = as.character(grna_target), response_id = as.character(response_id))
   sceptre_object@positive_control_pairs <- positive_control_pairs |> dplyr::mutate(grna_target = as.character(grna_target), response_id = as.character(response_id))
@@ -135,6 +148,7 @@ set_analysis_parameters <- function(sceptre_object,
   sceptre_object@multiple_testing_alpha <- multiple_testing_alpha
   sceptre_object@multiple_testing_method <- multiple_testing_method
   sceptre_object@grna_integration_strategy <- grna_integration_strategy
+  sceptre_object <- set_response_fit_method(sceptre_object, response_fit_method)
   sceptre_object@covariate_matrix <- convert_covariate_df_to_design_matrix(
     covariate_data_frame = sceptre_object@covariate_data_frame,
     formula_object = formula_object

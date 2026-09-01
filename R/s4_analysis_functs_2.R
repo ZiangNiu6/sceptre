@@ -121,6 +121,9 @@ run_calibration_check_pt_2 <- function(sceptre_object, output_amount = 1, print_
     out$result
   }
   sceptre_object@response_precomputations <- out$response_precomputations
+  sceptre_object <- set_analysis_phase_timing(
+    sceptre_object, "calibration_check", out$phase_timings
+  )
   return(sceptre_object)
 }
 
@@ -207,6 +210,9 @@ run_power_check <- function(sceptre_object, output_amount = 1, print_progress = 
     out$result
   }
   sceptre_object@response_precomputations <- out$response_precomputations
+  sceptre_object <- set_analysis_phase_timing(
+    sceptre_object, "power_check", out$phase_timings
+  )
   return(sceptre_object)
 }
 
@@ -286,6 +292,9 @@ run_discovery_analysis <- function(sceptre_object, output_amount = 1, print_prog
     out$result
   }
   sceptre_object@response_precomputations <- out$response_precomputations
+  sceptre_object <- set_analysis_phase_timing(
+    sceptre_object, "discovery_analysis", out$phase_timings
+  )
   return(sceptre_object)
 }
 
@@ -330,6 +339,8 @@ run_sceptre_analysis_high_level <- function(sceptre_object, response_grna_group_
     n_nonzero_cntrl_thresh = sceptre_object@n_nonzero_cntrl_thresh,
     side_code = sceptre_object@side_code, low_moi = sceptre_object@low_moi,
     response_precomputations = sceptre_object@response_precomputations,
+    response_fit_method = get_response_fit_method(sceptre_object),
+    response_fit_chunk_size = 16L,
     cells_in_use = sceptre_object@cells_in_use, print_progress = print_progress,
     parallel = parallel, n_processors = n_processors, log_dir = log_dir,
     analysis_type = analysis_type

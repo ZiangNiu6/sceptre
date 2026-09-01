@@ -16,7 +16,8 @@ set_analysis_parameters(
   control_group = "default",
   resampling_mechanism = "default",
   multiple_testing_method = "BH",
-  multiple_testing_alpha = 0.1
+  multiple_testing_alpha = 0.1,
+  response_fit_method = "sceptre"
 )
 }
 \arguments{
@@ -41,6 +42,8 @@ set_analysis_parameters(
 \item{multiple_testing_method}{(optional; default \code{"BH"}) a string specifying the multiple testing correction method to use; see \code{p.adjust.methods} for options}
 
 \item{multiple_testing_alpha}{(optional; default \code{0.1}) a numeric specifying the nominal level of the multiple testing correction method}
+
+\item{response_fit_method}{(optional; default \code{"sceptre"}) the method used to fit response nuisance models. \code{"sceptre"} uses the existing SCEPTRE procedure: it fits Poisson regression coefficients and estimates the negative-binomial size parameter conditional on the resulting fitted means. \code{"glmGamPoi"} uses \code{glmGamPoi::glm_gp()} to fit both the regression coefficients and dispersion in bounded multi-response chunks; this option requires glmGamPoi version 1.16.0 or later. This argument changes only response nuisance fitting. SCEPTRE's score test, conditional randomization test (CRT), saddlepoint approximations (SPA), and other resampling procedures are unchanged.}
 }
 \value{
 an updated \code{sceptre_object} in which the analysis parameters have been set

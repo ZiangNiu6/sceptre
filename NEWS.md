@@ -1,5 +1,17 @@
 # sceptre development version
 
+- Added an opt-in `response_fit_method = "glmGamPoi"` response nuisance fitter.
+  The existing SCEPTRE procedure, which retains Poisson regression coefficients
+  while estimating the negative-binomial size parameter, remains the default.
+  The new method uses bounded multi-response `glmGamPoi::glm_gp()` fits for both
+  the coefficients and dispersion while preserving SCEPTRE's cached
+  `fitted_coefs` and `theta` interface. This choice affects response nuisance
+  fitting only: SCEPTRE's score test, CRT and SPA methods, and other resampling
+  procedures are unchanged. glmGamPoi fits are scheduled in bounded chunks
+  before association workers are partitioned, response rows are extracted in
+  batches for in-memory matrices, and coarse fit/association timings are
+  retained on completed analysis objects for benchmarking.
+
 - Unified the Newton root stopping tolerance across exact and partial-normal
   information- and empirical-studentized CRT-SPA solvers at `1e-5`. This does
   not change the Berry--Esseen or maximum-tilt safety thresholds used by the

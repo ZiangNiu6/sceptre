@@ -50,6 +50,44 @@ get_cell_covariates <- function(sceptre_object) {
 }
 
 
+get_response_fit_method <- function(sceptre_object) {
+  response_fit_method <- attr(
+    sceptre_object,
+    "sceptre.response_fit_method",
+    exact = TRUE
+  )
+  if (is.null(response_fit_method)) response_fit_method <- "sceptre"
+  return(response_fit_method)
+}
+
+
+set_response_fit_method <- function(sceptre_object, response_fit_method) {
+  attr(sceptre_object, "sceptre.response_fit_method") <- response_fit_method
+  return(sceptre_object)
+}
+
+
+get_analysis_phase_timings <- function(sceptre_object) {
+  phase_timings <- attr(
+    sceptre_object,
+    "sceptre.analysis_phase_timings",
+    exact = TRUE
+  )
+  if (is.null(phase_timings)) phase_timings <- list()
+  phase_timings
+}
+
+
+set_analysis_phase_timing <- function(
+    sceptre_object, analysis_type, phase_timing) {
+  if (is.null(phase_timing)) return(sceptre_object)
+  phase_timings <- get_analysis_phase_timings(sceptre_object)
+  phase_timings[[analysis_type]] <- phase_timing
+  attr(sceptre_object, "sceptre.analysis_phase_timings") <- phase_timings
+  sceptre_object
+}
+
+
 #' Get gRNA assignments
 #'
 #' `get_grna_assignments()` returns the gRNA-to-cell assignments contained within a `sceptre_object`. The output is a sparse logical matrix, with gRNAs in the rows and cells in the columns. A given entry of the matrix is set to `TRUE` if the given gRNA is assigned to the given cell (and `FALSE` otherwise).

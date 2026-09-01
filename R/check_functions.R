@@ -119,7 +119,8 @@ check_import_data_inputs <- function(response_matrix, grna_matrix, grna_target_d
 
 check_set_analysis_parameters <- function(sceptre_object, formula_object, response_grna_target_pairs_list,
                                           control_group, resampling_mechanism, side, low_moi,
-                                          grna_integration_strategy, resampling_approximation) {
+                                          grna_integration_strategy, resampling_approximation,
+                                          response_fit_method) {
   response_matrix <- get_response_matrix(sceptre_object)
   grna_matrix <- get_grna_matrix(sceptre_object)
   covariate_data_frame <- sceptre_object@covariate_data_frame
@@ -222,6 +223,28 @@ check_set_analysis_parameters <- function(sceptre_object, formula_object, respon
       "`resampling_approximation = '", resampling_approximation,
       "'` is available only when `resampling_mechanism = 'crt'`."
     )
+  }
+
+  # 12. verify the response model fitting method and its optional dependency
+  if (!is.character(response_fit_method) || length(response_fit_method) != 1L ||
+      is.na(response_fit_method) ||
+      !(response_fit_method %in% c("sceptre", "glmGamPoi"))) {
+    stop("`response_fit_method` must be a single string, either 'sceptre' or 'glmGamPoi'.")
+  }
+  if (identical(response_fit_method, "glmGamPoi")) {
+    if (!requireNamespace("glmGamPoi", quietly = TRUE)) {
+      stop(
+        "The package `glmGamPoi` (version 1.16.0 or later) must be installed ",
+        "to use `response_fit_method = 'glmGamPoi'`."
+      )
+    }
+    if (utils::packageVersion("glmGamPoi") < package_version("1.16.0")) {
+      stop(
+        "`response_fit_method = 'glmGamPoi'` requires glmGamPoi version ",
+        "1.16.0 or later; installed version is ",
+        as.character(utils::packageVersion("glmGamPoi")), "."
+      )
+    }
   }
 
   return(NULL)
