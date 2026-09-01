@@ -208,8 +208,10 @@ check_set_analysis_parameters <- function(sceptre_object, formula_object, respon
     "crt_spa_empirical_always", "crt_spa_fast", "crt_spa_always_fast",
     "crt_spa_empirical_fast", "crt_spa_empirical_always_fast"
   )
+  rpt_spa_approximations <- c("rpt_spa", "rpt_spa_always")
   valid_resampling_approximations <- c(
-    "skew_normal", "no_approximation", crt_spa_approximations
+    "skew_normal", "no_approximation", rpt_spa_approximations,
+    crt_spa_approximations
   )
   if (!(resampling_approximation %in% valid_resampling_approximations)) {
     stop(
@@ -222,6 +224,13 @@ check_set_analysis_parameters <- function(sceptre_object, formula_object, respon
     stop(
       "`resampling_approximation = '", resampling_approximation,
       "'` is available only when `resampling_mechanism = 'crt'`."
+    )
+  }
+  if (resampling_approximation %in% rpt_spa_approximations &&
+      resampling_mechanism != "permutations") {
+    stop(
+      "`resampling_approximation = '", resampling_approximation,
+      "'` is available only when `resampling_mechanism = 'permutations'`."
     )
   }
 

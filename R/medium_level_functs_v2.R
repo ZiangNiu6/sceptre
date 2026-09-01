@@ -107,6 +107,10 @@ run_perm_test_in_memory <- function(response_matrix, grna_assignments, covariate
   get_idx_f <- get_idx_vector_factory(calibration_check, indiv_nt_grna_idxs, grna_group_idxs, low_moi)
   response_ids <- unique(response_grna_group_pairs$response_id)
   fit_parametric_curve <- (resampling_approximation == "skew_normal")
+  use_rpt_spa <- identical(resampling_approximation, "rpt_spa")
+  use_rpt_spa_always <- identical(
+    resampling_approximation, "rpt_spa_always"
+  )
 
   # 1. subset covariate matrix to cells_in_use and then to nt cells (if applicable)
   covariate_matrix <- covariate_matrix[cells_in_use,,drop=FALSE]
@@ -156,6 +160,14 @@ run_perm_test_in_memory <- function(response_matrix, grna_assignments, covariate
     }
     precomp_out_list <- list()
     result_out_list <- vector(mode = "list", length = length(curr_response_ids))
+    rpt_spa_fallback_bank_factory <- if (use_rpt_spa_always) {
+      make_rpt_spa_fallback_bank_factory(
+        B2 = B2,
+        varying_n_with_fixed_controls = !run_outer_regression
+      )
+    } else {
+      NULL
+    }
 
     for (response_idx in seq_along(curr_response_ids)) {
       response_id <- get_id_from_idx(response_idx, print_progress, curr_response_ids,
@@ -197,19 +209,26 @@ run_perm_test_in_memory <- function(response_matrix, grna_assignments, covariate
           covariate_matrix,
           response_precomp$fitted_coefs,
           response_precomp$theta,
-          full_test_stat = TRUE
+          full_test_stat = !use_rpt_spa_always
         )
         curr_response_result <- perm_test_glm_factored_out(
           synthetic_idxs, B1, B2, B3, fit_parametric_curve,
           output_amount, grna_groups, expression_vector,
-          pieces_precomp, get_idx_f, side_code
+          pieces_precomp, get_idx_f, side_code,
+          covariate_matrix = covariate_matrix,
+          use_rpt_spa = use_rpt_spa,
+          use_rpt_spa_always = use_rpt_spa_always,
+          rpt_spa_fallback_bank_factory = rpt_spa_fallback_bank_factory
         )
       } else {
         curr_response_result <- discovery_ntcells_perm_test(
           synthetic_idxs, B1, B2, B3, fit_parametric_curve,
           output_amount, covariate_matrix, all_nt_idxs,
           grna_group_idxs, grna_groups, expression_vector, side_code,
-          response_fit_method = response_fit_method
+          response_fit_method = response_fit_method,
+          use_rpt_spa = use_rpt_spa,
+          use_rpt_spa_always = use_rpt_spa_always,
+          rpt_spa_fallback_bank_factory = rpt_spa_fallback_bank_factory
         )
       }
 

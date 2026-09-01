@@ -1,5 +1,14 @@
 # sceptre development version
 
+- Added opt-in `resampling_approximation = "rpt_spa"` and
+  `resampling_approximation = "rpt_spa_always"` modes for fixed-count
+  randomization (permutation) tests. Both use the native information-studentized
+  SCEPTRE statistic and a conditional full-Newton saddlepoint approximation
+  with an explicit count tilt. The adaptive mode retains the 499-permutation
+  tail screen; the always mode skips the screen and creates an exact fixed-count
+  4,999-permutation fallback bank lazily. Nonregular support-boundary and
+  near-center saddlepoints also request the empirical fallback.
+
 - Added an opt-in `response_fit_method = "glmGamPoi"` response nuisance fitter.
   The existing SCEPTRE procedure, which retains Poisson regression coefficients
   while estimating the negative-binomial size parameter, remains the default.

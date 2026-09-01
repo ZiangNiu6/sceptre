@@ -28,28 +28,129 @@ get_idx_vector_discovery_analysis <- function(curr_grna_group, grna_group_idxs) 
 }
 
 
+make_rpt_spa_fallback_bank_factory <- function(
+    B2, varying_n_with_fixed_controls = FALSE) {
+  # Both samplers couple margins by prefix, so only the widest bank is kept.
+  bank_cache <- new.env(hash = TRUE, parent = emptyenv())
+  function(n_cells, n_trt) {
+    if (varying_n_with_fixed_controls) {
+      n_controls <- n_cells - n_trt
+      cache_key <- paste0("controls:", n_controls)
+      cached <- get0(
+        cache_key, envir = bank_cache, inherits = FALSE,
+        ifnotfound = NULL
+      )
+      min_trt <- if (is.null(cached)) n_trt else min(n_trt, cached$min_trt)
+      max_trt <- if (is.null(cached)) n_trt else max(n_trt, cached$max_trt)
+      if (is.null(cached) || min_trt != cached$min_trt ||
+          max_trt != cached$max_trt) {
+        cached <- list(
+          min_trt = min_trt,
+          max_trt = max_trt,
+          bank = hybrid_fisher_iwor_sampler(
+            N = n_controls, m = min_trt, M = max_trt, B = B2
+          )
+        )
+        assign(cache_key, cached, envir = bank_cache)
+      }
+    } else {
+      cache_key <- paste0("cells:", n_cells)
+      cached <- get0(
+        cache_key, envir = bank_cache, inherits = FALSE,
+        ifnotfound = NULL
+      )
+      if (is.null(cached) || n_trt > cached$max_trt) {
+        cached <- list(
+          max_trt = n_trt,
+          bank = fisher_yates_samlper(
+            n_tot = n_cells, M = n_trt, B = B2
+          )
+        )
+        assign(cache_key, cached, envir = bank_cache)
+      }
+    }
+    cached$bank
+  }
+}
+
+
 # workhorse function 1. permutations, glm factored out
 perm_test_glm_factored_out <- function(synthetic_idxs, B1, B2, B3, fit_parametric_curve, output_amount, grna_groups,
-                                       expression_vector, pieces_precomp, get_idx_f, side_code) {
+                                       expression_vector, pieces_precomp, get_idx_f, side_code,
+                                       covariate_matrix = NULL, use_rpt_spa = FALSE,
+                                       use_rpt_spa_always = FALSE,
+                                       rpt_spa_fallback_bank_factory = NULL) {
   result_list_inner <- vector(mode = "list", length = length(grna_groups))
+  if (use_rpt_spa_always && is.null(rpt_spa_fallback_bank_factory)) {
+    rpt_spa_fallback_bank_factory <- make_rpt_spa_fallback_bank_factory(B2)
+  }
   for (i in seq_along(grna_groups)) {
     curr_grna_group <- grna_groups[i]
     idxs <- get_idx_f(curr_grna_group)
-    result <- run_low_level_test_full_v4(
-      y = expression_vector,
-      mu = pieces_precomp$mu,
-      a = pieces_precomp$a,
-      w = pieces_precomp$w,
-      D = pieces_precomp$D,
-      trt_idxs = idxs$trt_idxs,
-      use_all_cells = FALSE,
-      n_trt = idxs$n_trt,
-      synthetic_idxs = synthetic_idxs,
-      B1 = B1, B2 = B2, B3 = B3,
-      fit_parametric_curve = fit_parametric_curve,
-      return_resampling_dist = (output_amount == 3L),
-      side_code = side_code
-    )
+    if (use_rpt_spa) {
+      result <- run_low_level_test_full_rpt_spa_v1(
+        y = expression_vector,
+        mu = pieces_precomp$mu,
+        a = pieces_precomp$a,
+        w = pieces_precomp$w,
+        D = pieces_precomp$D,
+        Z = covariate_matrix,
+        trt_idxs = idxs$trt_idxs,
+        n_trt = idxs$n_trt,
+        use_all_cells = FALSE,
+        synthetic_idxs = synthetic_idxs,
+        B1 = B1,
+        B2 = B2,
+        return_resampling_dist = (output_amount == 3L),
+        side_code = side_code
+      )
+    } else if (use_rpt_spa_always) {
+      result <- run_low_level_test_full_rpt_spa_always_v1(
+        y = expression_vector,
+        mu = pieces_precomp$mu,
+        a = pieces_precomp$a,
+        w = pieces_precomp$b,
+        Z = covariate_matrix,
+        trt_idxs = idxs$trt_idxs,
+        n_trt = idxs$n_trt,
+        side_code = side_code,
+        max_iterations = 50L
+      )
+      if (isTRUE(result$needs_empirical_fallback)) {
+        fallback_bank <- rpt_spa_fallback_bank_factory(
+          n_cells = length(expression_vector), n_trt = idxs$n_trt
+        )
+        result <- finalize_low_level_test_rpt_spa_fallback_v1(
+          a = pieces_precomp$a,
+          w = pieces_precomp$b,
+          Z = covariate_matrix,
+          n_trt = idxs$n_trt,
+          synthetic_idxs = fallback_bank,
+          B2 = B2,
+          return_resampling_dist = (output_amount == 3L),
+          side_code = side_code,
+          spa_attempt_result = result
+        )
+      } else if (output_amount == 3L && is.null(result$resampling_dist)) {
+        result$resampling_dist <- numeric(0)
+      }
+    } else {
+      result <- run_low_level_test_full_v4(
+        y = expression_vector,
+        mu = pieces_precomp$mu,
+        a = pieces_precomp$a,
+        w = pieces_precomp$w,
+        D = pieces_precomp$D,
+        trt_idxs = idxs$trt_idxs,
+        use_all_cells = FALSE,
+        n_trt = idxs$n_trt,
+        synthetic_idxs = synthetic_idxs,
+        B1 = B1, B2 = B2, B3 = B3,
+        fit_parametric_curve = fit_parametric_curve,
+        return_resampling_dist = (output_amount == 3L),
+        side_code = side_code
+      )
+    }
     result_list_inner[[i]] <- result
   }
   return(result_list_inner)
@@ -59,8 +160,16 @@ perm_test_glm_factored_out <- function(synthetic_idxs, B1, B2, B3, fit_parametri
 # workhorse function 2: permutations, glm run inside
 discovery_ntcells_perm_test <- function(synthetic_idxs, B1, B2, B3, fit_parametric_curve, output_amount, covariate_matrix,
                                         all_nt_idxs, grna_group_idxs, grna_groups, expression_vector, side_code,
-                                        response_fit_method = "sceptre") {
+                                        response_fit_method = "sceptre",
+                                        use_rpt_spa = FALSE,
+                                        use_rpt_spa_always = FALSE,
+                                        rpt_spa_fallback_bank_factory = NULL) {
   result_list_inner <- vector(mode = "list", length = length(grna_groups))
+  if (use_rpt_spa_always && is.null(rpt_spa_fallback_bank_factory)) {
+    rpt_spa_fallback_bank_factory <- make_rpt_spa_fallback_bank_factory(
+      B2, varying_n_with_fixed_controls = TRUE
+    )
+  }
   for (i in seq_along(grna_groups)) {
     curr_grna_group <- grna_groups[i]
     idxs <- get_idx_vector_discovery_analysis(curr_grna_group = curr_grna_group, grna_group_idxs = grna_group_idxs)
@@ -84,24 +193,73 @@ discovery_ntcells_perm_test <- function(synthetic_idxs, B1, B2, B3, fit_parametr
       covariate_matrix = curr_covariate_matrix,
       fitted_coefs = response_precomp$fitted_coefs,
       theta = response_precomp$theta,
-      full_test_stat = TRUE
+      full_test_stat = !use_rpt_spa_always
     )
     # 4. run the association test
-    result <- run_low_level_test_full_v4(
-      y = curr_expression_vector,
-      mu = precomp_pieces$mu,
-      a = precomp_pieces$a,
-      w = precomp_pieces$w,
-      D = precomp_pieces$D,
-      n_trt = n_trt,
-      use_all_cells = FALSE,
-      trt_idxs = trt_idxs,
-      synthetic_idxs = synthetic_idxs,
-      B1 = B1, B2 = B2, B3 = B3,
-      fit_parametric_curve = fit_parametric_curve,
-      return_resampling_dist = (output_amount == 3L),
-      side_code = side_code
-    )
+    if (use_rpt_spa) {
+      result <- run_low_level_test_full_rpt_spa_v1(
+        y = curr_expression_vector,
+        mu = precomp_pieces$mu,
+        a = precomp_pieces$a,
+        w = precomp_pieces$w,
+        D = precomp_pieces$D,
+        Z = curr_covariate_matrix,
+        trt_idxs = trt_idxs,
+        n_trt = n_trt,
+        use_all_cells = FALSE,
+        synthetic_idxs = synthetic_idxs,
+        B1 = B1,
+        B2 = B2,
+        return_resampling_dist = (output_amount == 3L),
+        side_code = side_code
+      )
+    } else if (use_rpt_spa_always) {
+      result <- run_low_level_test_full_rpt_spa_always_v1(
+        y = curr_expression_vector,
+        mu = precomp_pieces$mu,
+        a = precomp_pieces$a,
+        w = precomp_pieces$b,
+        Z = curr_covariate_matrix,
+        trt_idxs = trt_idxs,
+        n_trt = n_trt,
+        side_code = side_code,
+        max_iterations = 50L
+      )
+      if (isTRUE(result$needs_empirical_fallback)) {
+        fallback_bank <- rpt_spa_fallback_bank_factory(
+          n_cells = length(curr_expression_vector), n_trt = n_trt
+        )
+        result <- finalize_low_level_test_rpt_spa_fallback_v1(
+          a = precomp_pieces$a,
+          w = precomp_pieces$b,
+          Z = curr_covariate_matrix,
+          n_trt = n_trt,
+          synthetic_idxs = fallback_bank,
+          B2 = B2,
+          return_resampling_dist = (output_amount == 3L),
+          side_code = side_code,
+          spa_attempt_result = result
+        )
+      } else if (output_amount == 3L && is.null(result$resampling_dist)) {
+        result$resampling_dist <- numeric(0)
+      }
+    } else {
+      result <- run_low_level_test_full_v4(
+        y = curr_expression_vector,
+        mu = precomp_pieces$mu,
+        a = precomp_pieces$a,
+        w = precomp_pieces$w,
+        D = precomp_pieces$D,
+        n_trt = n_trt,
+        use_all_cells = FALSE,
+        trt_idxs = trt_idxs,
+        synthetic_idxs = synthetic_idxs,
+        B1 = B1, B2 = B2, B3 = B3,
+        fit_parametric_curve = fit_parametric_curve,
+        return_resampling_dist = (output_amount == 3L),
+        side_code = side_code
+      )
+    }
     result_list_inner[[i]] <- result
   }
   return(result_list_inner)

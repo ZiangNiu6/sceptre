@@ -310,7 +310,11 @@ process_discovery_result <- function(result, sceptre_object) {
 run_sceptre_analysis_high_level <- function(sceptre_object, response_grna_group_pairs, calibration_check, analysis_type,
                                             output_amount, print_progress, parallel, n_processors, log_dir) {
   # if running permutations, generate the permutation idxs
-  if (sceptre_object@run_permutations) {
+  synthetic_idxs <- NULL
+  use_lazy_rpt_spa_fallback <- identical(
+    sceptre_object@resampling_approximation, "rpt_spa_always"
+  )
+  if (sceptre_object@run_permutations && !use_lazy_rpt_spa_fallback) {
     cat("Generating permutation resamples.")
     synthetic_idxs <- get_synthetic_permutation_idxs(
       grna_assignments = sceptre_object@grna_assignments,
