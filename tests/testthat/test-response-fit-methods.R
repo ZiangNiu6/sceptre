@@ -919,10 +919,27 @@ test_that("a small glmGamPoi discovery analysis completes end to end", {
   expect_named(phase_timings, "discovery_analysis")
   expect_identical(
     phase_timings$discovery_analysis$timing_schema_version[[1L]],
-    1L
+    2L
   )
   expect_identical(
     phase_timings$discovery_analysis$response_fit_method[[1L]],
     "glmGamPoi"
   )
+  expect_identical(
+    get_grna_fit_diagnostics(result)$discovery_analysis$method_used,
+    "glm.fit"
+  )
+  fast_result <- run_discovery_analysis(
+    set_grna_fit_method(sceptre_object, "fast_logistic"),
+    print_progress = FALSE, parallel = FALSE
+  )
+  expect_identical(
+    get_grna_fit_diagnostics(fast_result)$discovery_analysis$method_used,
+    "fast_logistic"
+  )
+  expect_true(is.finite(fast_result@discovery_result$p_value[[1L]]))
+  restored <- unserialize(serialize(fast_result, NULL))
+  expect_identical(get_grna_fit_diagnostics(restored), get_grna_fit_diagnostics(fast_result))
+  invalidated <- perform_status_check_and_update(fast_result, "set_analysis_parameters")
+  expect_length(get_grna_fit_diagnostics(invalidated), 0L)
 })

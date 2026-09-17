@@ -355,6 +355,7 @@ run_sceptre_analysis_high_level <- function(sceptre_object, response_grna_group_
     args_to_pass$synthetic_idxs <- synthetic_idxs
     do.call(what = "run_perm_test_in_memory", args = args_to_pass)
   } else {
+    args_to_pass$grna_fit_method <- get_grna_fit_method(sceptre_object)
     do.call(what = "run_crt_in_memory_v2", args = args_to_pass)
   }
 

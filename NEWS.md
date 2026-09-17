@@ -1,5 +1,13 @@
 # sceptre development version
 
+- Added an opt-in `grna_fit_method = "fast_logistic"` implementation for the
+  per-target binary-logistic X given Z nuisance fits used by CRT analyses. It
+  computes the same unpenalized binomial-logit estimator as the default
+  `stats::glm.fit()` implementation and falls back to `stats::glm.fit()` for
+  any target that the optimized solver cannot safely fit. This setting is
+  independent of response nuisance fitting and the test method, is unused for
+  permutation/RPT analyses, and does not alter `assign_grnas()` preprocessing.
+
 - Added opt-in `resampling_approximation = "rpt_spa"` and
   `resampling_approximation = "rpt_spa_always"` modes for fixed-count
   randomization (permutation) tests. Both use the native information-studentized

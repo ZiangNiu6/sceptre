@@ -100,6 +100,16 @@ setMethod("print", signature = signature("sceptre_object"), function(x) {
     },
     "\n\t\U2022 Resampling mechanism: ", if (length(x@run_permutations) == 0L) "not specified" else crayon::blue(ifelse(x@run_permutations, "permutations", "conditional resampling")),
     "\n\t\U2022 Response fit method: ", crayon::blue(get_response_fit_method(x)),
+    "\n\t\U2022 gRNA fit method: ", if (length(x@run_permutations) == 0L) {
+      "not specified"
+    } else if (isTRUE(x@run_permutations)) {
+      paste0(
+        "not used for permutation/RPT analyses (configured: ",
+        crayon::blue(get_grna_fit_method(x)), ")"
+      )
+    } else {
+      crayon::blue(get_grna_fit_method(x))
+    },
     "\n\t\U2022 gRNA integration strategy: ", if (length(x@grna_integration_strategy) == 0L) "not specified" else crayon::blue(x@grna_integration_strategy),
     "\n\t\U2022 Resampling approximation: ", if (length(x@resampling_approximation) == 0L) "not specified" else crayon::blue(gsub(pattern = "_", replacement = " ", fixed = TRUE, x = x@resampling_approximation)),
     "\n\t\U2022 Multiple testing adjustment: ", if (x@nuclear || length(x@multiple_testing_method) == 0L) "none" else paste0(crayon::blue(x@multiple_testing_method), " at level ", crayon::blue(x@multiple_testing_alpha)),

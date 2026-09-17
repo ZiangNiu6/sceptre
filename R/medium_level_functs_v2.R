@@ -305,7 +305,8 @@ run_crt_in_memory_v2 <- function(response_matrix, grna_assignments, covariate_ma
                                  output_amount, resampling_approximation, B1, B2, B3, calibration_check, control_group_complement,
                                  n_nonzero_trt_thresh, n_nonzero_cntrl_thresh, side_code, low_moi, response_precomputations,
                                  cells_in_use, print_progress, parallel, n_processors, log_dir, analysis_type,
-                                 response_fit_method = "sceptre", response_fit_chunk_size = 16L) {
+                                 response_fit_method = "sceptre", response_fit_chunk_size = 16L,
+                                 grna_fit_method = "glm.fit") {
   runner_started <- proc.time()[["elapsed"]]
   # 0. define several variables
   subset_to_nt_cells <- calibration_check && !control_group_complement
@@ -328,7 +329,7 @@ run_crt_in_memory_v2 <- function(response_matrix, grna_assignments, covariate_ma
 
   # 1. subset covariate matrix to cells_in_use and then to nt cells (if applicable)
   covariate_matrix <- covariate_matrix[cells_in_use,,drop=FALSE]
-  if (subset_to_nt_cells) covariate_matrix <- covariate_matrix[all_nt_idxs, ]
+  if (subset_to_nt_cells) covariate_matrix <- covariate_matrix[all_nt_idxs, , drop = FALSE]
   precomp_cell_indices <- cells_in_use
   if (subset_to_nt_cells) precomp_cell_indices <- precomp_cell_indices[all_nt_idxs]
 
@@ -438,6 +439,7 @@ run_crt_in_memory_v2 <- function(response_matrix, grna_assignments, covariate_ma
   # 6. define the function to analyze the pairs
   perform_association_analysis <- function(curr_grna_groups, proc_id) {
     result_out_list <- vector(mode = "list", length = length(curr_grna_groups))
+    grna_diagnostics <- vector(mode = "list", length = length(curr_grna_groups))
     f_name <- if (parallel && print_progress) paste0(get_log_dir(log_dir), analysis_type, "_", proc_id, ".out") else NULL
 
     for (grna_group_idx in seq_along(curr_grna_groups)) {
@@ -458,7 +460,10 @@ run_crt_in_memory_v2 <- function(response_matrix, grna_assignments, covariate_ma
           use_crt_spa_empirical_always, output_amount,
           response_ids, response_precomputations, covariate_matrix,
           get_idx_f, curr_grna_group, subset_to_nt_cells, all_nt_idxs,
-          response_matrix, side_code, cells_in_use, use_fast = use_fast
+          response_matrix, side_code, cells_in_use, use_fast = use_fast,
+          grna_fit_method = grna_fit_method,
+          prepared_grna_design = shared_grna_preparation$design,
+          collect_grna_diagnostics = TRUE
         )
       } else {
         curr_response_result <- discovery_ntcells_crt(
@@ -468,19 +473,29 @@ run_crt_in_memory_v2 <- function(response_matrix, grna_assignments, covariate_ma
           response_ids, covariate_matrix, curr_grna_group, all_nt_idxs,
           response_matrix, side_code, cells_in_use, use_fast = use_fast,
           response_fit_method = response_fit_method,
-          response_fit_chunk_size = response_fit_chunk_size
+          response_fit_chunk_size = response_fit_chunk_size,
+          grna_fit_method = grna_fit_method,
+          collect_grna_diagnostics = TRUE
         )
       }
       result_out_list[[grna_group_idx]] <- construct_data_frame_v2(curr_df, curr_response_result, output_amount)
+      grna_diagnostics[[grna_group_idx]] <- attr(curr_response_result, "grna_fit_diagnostics", exact = TRUE)
     }
     # 9. prepare output
-    ret_pass_qc <- data.table::rbindlist(result_out_list, fill = TRUE)
+    list(
+      result = data.table::rbindlist(result_out_list, fill = TRUE),
+      grna_fit_diagnostics = data.table::rbindlist(grna_diagnostics, fill = TRUE)
+    )
   }
 
   # 10. perform the association analyses
   grna_groups <- unique(response_grna_group_pairs$grna_group)
   partitioned_grna_group_ids <- partition_response_ids(response_ids = grna_groups, parallel = parallel, n_processors = n_processors)
   association_started <- proc.time()[["elapsed"]]
+  shared_grna_preparation <- list(design = NULL, cpu_seconds = 0, elapsed_seconds = 0)
+  if (identical(grna_fit_method, "fast_logistic") && run_outer_regression && length(grna_groups)) {
+    shared_grna_preparation <- prepare_grna_design_timed(covariate_matrix)
+  }
   if (!parallel) {
     res <- lapply(partitioned_grna_group_ids, perform_association_analysis)
   } else {
@@ -491,7 +506,8 @@ run_crt_in_memory_v2 <- function(response_matrix, grna_assignments, covariate_ma
     cat(crayon::green(" \u2713\n"))
   }
   association_elapsed <- proc.time()[["elapsed"]] - association_started
-  result <- res |> data.table::rbindlist(fill = TRUE)
+  result <- data.table::rbindlist(lapply(res, `[[`, "result"), fill = TRUE)
+  grna_diagnostics <- data.table::rbindlist(lapply(res, `[[`, "grna_fit_diagnostics"), fill = TRUE)
 
   phase_timings <- make_analysis_phase_timings(
     runner = "run_crt_in_memory_v2",
@@ -517,6 +533,10 @@ run_crt_in_memory_v2 <- function(response_matrix, grna_assignments, covariate_ma
     association_n_workers = length(partitioned_grna_group_ids),
     parallel = parallel,
     n_processors = n_processors
+  )
+  phase_timings <- add_grna_phase_timings(
+    phase_timings, grna_diagnostics, grna_fit_method,
+    shared_grna_preparation, shared_design = run_outer_regression
   )
   return(list(
     result = result,

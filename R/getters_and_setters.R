@@ -67,6 +67,23 @@ set_response_fit_method <- function(sceptre_object, response_fit_method) {
 }
 
 
+get_grna_fit_method <- function(sceptre_object) {
+  grna_fit_method <- attr(
+    sceptre_object,
+    "sceptre.grna_fit_method",
+    exact = TRUE
+  )
+  if (is.null(grna_fit_method)) grna_fit_method <- "glm.fit"
+  return(grna_fit_method)
+}
+
+
+set_grna_fit_method <- function(sceptre_object, grna_fit_method) {
+  attr(sceptre_object, "sceptre.grna_fit_method") <- grna_fit_method
+  return(sceptre_object)
+}
+
+
 get_analysis_phase_timings <- function(sceptre_object) {
   phase_timings <- attr(
     sceptre_object,

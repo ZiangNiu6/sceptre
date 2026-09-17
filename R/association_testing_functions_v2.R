@@ -273,17 +273,27 @@ crt_glm_factored_out <- function(B1, B2, B3, fit_parametric_curve, use_crt_spa, 
                                  response_ids, response_precomputations, covariate_matrix,
                                  get_idx_f, curr_grna_group, subset_to_nt_cells, all_nt_idxs,
                                  response_matrix, side_code, cells_in_use,
-                                 use_fast = FALSE) {
+                                 use_fast = FALSE, grna_fit_method = "glm.fit",
+                                 prepared_grna_design = NULL,
+                                 collect_grna_diagnostics = FALSE) {
   result_list_inner <- vector(mode = "list", length = length(response_ids))
   # precomputation on grna
   idxs <- get_idx_f(curr_grna_group)
   trt_idxs <- idxs$trt_idxs
   n_trt <- idxs$n_trt
-  fitted_probabilities <- perform_grna_precomputation(
-    trt_idxs = trt_idxs,
-    covariate_matrix = covariate_matrix,
-    return_fitted_values = TRUE
-  )
+  if (collect_grna_diagnostics) {
+    grna_fit <- fit_grna_with_diagnostics(
+      trt_idxs, covariate_matrix, curr_grna_group, grna_fit_method,
+      prepared_design = prepared_grna_design
+    )
+    fitted_probabilities <- grna_fit$fitted_probabilities
+  } else {
+    fitted_probabilities <- perform_grna_precomputation(
+      trt_idxs = trt_idxs, covariate_matrix = covariate_matrix,
+      return_fitted_values = TRUE, grna_fit_method = grna_fit_method,
+      prepared_design = prepared_grna_design
+    )
+  }
   synthetic_idxs <- if (use_crt_spa_always || use_crt_spa_empirical_always) {
     NULL
   } else {
@@ -432,6 +442,9 @@ crt_glm_factored_out <- function(B1, B2, B3, fit_parametric_curve, use_crt_spa, 
     }
     result_list_inner[[i]] <- result
   }
+  if (collect_grna_diagnostics) {
+    attr(result_list_inner, "grna_fit_diagnostics") <- grna_fit$diagnostics
+  }
   return(result_list_inner)
 }
 
@@ -441,7 +454,9 @@ discovery_ntcells_crt <- function(B1, B2, B3, fit_parametric_curve, use_crt_spa,
                                   use_crt_spa_empirical_always, output_amount, get_idx_f, response_ids,
                                   covariate_matrix, curr_grna_group, all_nt_idxs, response_matrix,
                                   side_code, cells_in_use, use_fast = FALSE,
-                                  response_fit_method = "sceptre", response_fit_chunk_size = 16L) {
+                                  response_fit_method = "sceptre", response_fit_chunk_size = 16L,
+                                  grna_fit_method = "glm.fit",
+                                  collect_grna_diagnostics = FALSE) {
   result_list_inner <- vector(mode = "list", length = length(response_ids))
   # initialize the idxs
   idxs <- get_idx_f(curr_grna_group)
@@ -449,13 +464,19 @@ discovery_ntcells_crt <- function(B1, B2, B3, fit_parametric_curve, use_crt_spa,
   combined_idxs <- c(idxs$trt_idxs, all_nt_idxs)
   trt_idxs <- seq(1L, n_trt)
   # subset the covariate matrix for this gRNA
-  curr_covariate_matrix <- covariate_matrix[combined_idxs, ]
+  curr_covariate_matrix <- covariate_matrix[combined_idxs, , drop = FALSE]
   # perform the grna precomputation
-  fitted_probabilities <- perform_grna_precomputation(
-    trt_idxs = trt_idxs,
-    covariate_matrix = curr_covariate_matrix,
-    return_fitted_values = TRUE
-  )
+  if (collect_grna_diagnostics) {
+    grna_fit <- fit_grna_with_diagnostics(
+      trt_idxs, curr_covariate_matrix, curr_grna_group, grna_fit_method
+    )
+    fitted_probabilities <- grna_fit$fitted_probabilities
+  } else {
+    fitted_probabilities <- perform_grna_precomputation(
+      trt_idxs = trt_idxs, covariate_matrix = curr_covariate_matrix,
+      return_fitted_values = TRUE, grna_fit_method = grna_fit_method
+    )
+  }
   synthetic_idxs <- if (use_crt_spa_always || use_crt_spa_empirical_always) {
     NULL
   } else {
@@ -625,6 +646,9 @@ discovery_ntcells_crt <- function(B1, B2, B3, fit_parametric_curve, use_crt_spa,
       )
     }
     result_list_inner[[i]] <- result
+  }
+  if (collect_grna_diagnostics) {
+    attr(result_list_inner, "grna_fit_diagnostics") <- grna_fit$diagnostics
   }
   return(result_list_inner)
 }

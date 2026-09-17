@@ -17,7 +17,8 @@ set_analysis_parameters(
   resampling_mechanism = "default",
   multiple_testing_method = "BH",
   multiple_testing_alpha = 0.1,
-  response_fit_method = "sceptre"
+  response_fit_method = "sceptre",
+  grna_fit_method = "glm.fit"
 )
 }
 \arguments{
@@ -44,6 +45,8 @@ set_analysis_parameters(
 \item{multiple_testing_alpha}{(optional; default \code{0.1}) a numeric specifying the nominal level of the multiple testing correction method}
 
 \item{response_fit_method}{(optional; default \code{"sceptre"}) the method used to fit response nuisance models. \code{"sceptre"} uses the existing SCEPTRE procedure: it fits Poisson regression coefficients and estimates the negative-binomial size parameter conditional on the resulting fitted means. \code{"glmGamPoi"} uses \code{glmGamPoi::glm_gp()} to fit both the regression coefficients and dispersion in bounded multi-response chunks; this option requires glmGamPoi version 1.16.0 or later. This argument changes only response nuisance fitting. SCEPTRE's score test, conditional randomization test (CRT), saddlepoint approximations (SPA), and other resampling procedures are unchanged.}
+
+\item{grna_fit_method}{(optional; default \code{"glm.fit"}) the method used to fit the per-target binary-logistic gRNA assignment model, X given Z, for CRT analyses. \code{"glm.fit"} uses the current \code{stats::glm.fit()} implementation. \code{"fast_logistic"} uses an optimized implementation of the same unpenalized binomial-logit estimator, with a per-target \code{stats::glm.fit()} fallback when the optimized solver cannot safely complete a fit. This choice is independent of \code{response_fit_method} and does not change the test or resampling method. It is unused for permutation/RPT analyses and does not alter the preprocessing performed by \code{assign_grnas()}.}
 }
 \value{
 an updated \code{sceptre_object} in which the analysis parameters have been set

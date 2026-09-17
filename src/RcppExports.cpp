@@ -209,6 +209,36 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// prepare_grna_logistic_design_cpp
+Rcpp::List prepare_grna_logistic_design_cpp(const Rcpp::NumericMatrix& Z, const bool condition, const double rank_tolerance);
+RcppExport SEXP _sceptre_prepare_grna_logistic_design_cpp(SEXP ZSEXP, SEXP conditionSEXP, SEXP rank_toleranceSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const Rcpp::NumericMatrix& >::type Z(ZSEXP);
+    Rcpp::traits::input_parameter< const bool >::type condition(conditionSEXP);
+    Rcpp::traits::input_parameter< const double >::type rank_tolerance(rank_toleranceSEXP);
+    rcpp_result_gen = Rcpp::wrap(prepare_grna_logistic_design_cpp(Z, condition, rank_tolerance));
+    return rcpp_result_gen;
+END_RCPP
+}
+// fit_grna_logistic_prepared_cpp
+Rcpp::List fit_grna_logistic_prepared_cpp(const Rcpp::List& prepared, const Rcpp::IntegerVector& treated_indices, const double tolerance, const int max_iterations, const int max_step_halvings, const double separation_eta_limit, const double rank_tolerance);
+RcppExport SEXP _sceptre_fit_grna_logistic_prepared_cpp(SEXP preparedSEXP, SEXP treated_indicesSEXP, SEXP toleranceSEXP, SEXP max_iterationsSEXP, SEXP max_step_halvingsSEXP, SEXP separation_eta_limitSEXP, SEXP rank_toleranceSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const Rcpp::List& >::type prepared(preparedSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::IntegerVector& >::type treated_indices(treated_indicesSEXP);
+    Rcpp::traits::input_parameter< const double >::type tolerance(toleranceSEXP);
+    Rcpp::traits::input_parameter< const int >::type max_iterations(max_iterationsSEXP);
+    Rcpp::traits::input_parameter< const int >::type max_step_halvings(max_step_halvingsSEXP);
+    Rcpp::traits::input_parameter< const double >::type separation_eta_limit(separation_eta_limitSEXP);
+    Rcpp::traits::input_parameter< const double >::type rank_tolerance(rank_toleranceSEXP);
+    rcpp_result_gen = Rcpp::wrap(fit_grna_logistic_prepared_cpp(prepared, treated_indices, tolerance, max_iterations, max_step_halvings, separation_eta_limit, rank_tolerance));
+    return rcpp_result_gen;
+END_RCPP
+}
 // run_low_level_test_full_crt_spa_v1
 SEXP run_low_level_test_full_crt_spa_v1(NumericVector y, NumericVector mu, NumericVector a, NumericVector w, NumericMatrix D, NumericMatrix Z, NumericVector fitted_probabilities, IntegerVector trt_idxs, int n_trt, bool use_all_cells, SEXP synthetic_idxs, int B1, int B2, bool return_resampling_dist, int side_code, bool use_fast);
 RcppExport SEXP _sceptre_run_low_level_test_full_crt_spa_v1(SEXP ySEXP, SEXP muSEXP, SEXP aSEXP, SEXP wSEXP, SEXP DSEXP, SEXP ZSEXP, SEXP fitted_probabilitiesSEXP, SEXP trt_idxsSEXP, SEXP n_trtSEXP, SEXP use_all_cellsSEXP, SEXP synthetic_idxsSEXP, SEXP B1SEXP, SEXP B2SEXP, SEXP return_resampling_distSEXP, SEXP side_codeSEXP, SEXP use_fastSEXP) {
@@ -766,6 +796,8 @@ static const R_CallMethodDef CallEntries[] = {
     {"_sceptre_hybrid_fisher_iwor_sampler", (DL_FUNC) &_sceptre_hybrid_fisher_iwor_sampler, 4},
     {"_sceptre_crt_index_sampler", (DL_FUNC) &_sceptre_crt_index_sampler, 2},
     {"_sceptre_crt_index_sampler_fast", (DL_FUNC) &_sceptre_crt_index_sampler_fast, 2},
+    {"_sceptre_prepare_grna_logistic_design_cpp", (DL_FUNC) &_sceptre_prepare_grna_logistic_design_cpp, 3},
+    {"_sceptre_fit_grna_logistic_prepared_cpp", (DL_FUNC) &_sceptre_fit_grna_logistic_prepared_cpp, 7},
     {"_sceptre_run_low_level_test_full_crt_spa_v1", (DL_FUNC) &_sceptre_run_low_level_test_full_crt_spa_v1, 16},
     {"_sceptre_run_low_level_test_full_crt_spa_always_v1", (DL_FUNC) &_sceptre_run_low_level_test_full_crt_spa_always_v1, 11},
     {"_sceptre_finalize_low_level_test_crt_spa_fallback_v1", (DL_FUNC) &_sceptre_finalize_low_level_test_crt_spa_fallback_v1, 8},

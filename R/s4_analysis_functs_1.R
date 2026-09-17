@@ -16,6 +16,7 @@
 #' @param multiple_testing_method (optional; default `"BH"`) a string specifying the multiple testing correction method to use; see `p.adjust.methods` for options
 #' @param multiple_testing_alpha (optional; default `0.1`) a numeric specifying the nominal level of the multiple testing correction method
 #' @param response_fit_method (optional; default `"sceptre"`) the method used to fit response nuisance models. `"sceptre"` uses the existing SCEPTRE procedure: it fits Poisson regression coefficients and estimates the negative-binomial size parameter conditional on the resulting fitted means. `"glmGamPoi"` uses `glmGamPoi::glm_gp()` to fit both the regression coefficients and dispersion in bounded multi-response chunks; this option requires glmGamPoi version 1.16.0 or later. This argument changes only response nuisance fitting. SCEPTRE's score test, conditional randomization test (CRT), saddlepoint approximations (SPA), and other resampling procedures are unchanged.
+#' @param grna_fit_method (optional; default `"glm.fit"`) the method used to fit the per-target binary-logistic gRNA assignment model, X given Z, for CRT analyses. `"glm.fit"` uses the current `stats::glm.fit()` implementation. `"fast_logistic"` uses an optimized implementation of the same unpenalized binomial-logit estimator, with a per-target `stats::glm.fit()` fallback when the optimized solver cannot safely complete a fit. This choice is independent of `response_fit_method` and does not change the test or resampling method. It is unused for permutation/RPT analyses and does not alter the preprocessing performed by `assign_grnas()`.
 #'
 #' @return an updated `sceptre_object` in which the analysis parameters have been set
 #'
@@ -58,7 +59,8 @@ set_analysis_parameters <- function(sceptre_object,
                                     resampling_mechanism = "default",
                                     multiple_testing_method = "BH",
                                     multiple_testing_alpha = 0.1,
-                                    response_fit_method = "sceptre") {
+                                    response_fit_method = "sceptre",
+                                    grna_fit_method = "glm.fit") {
   # 0. verify that function called in correct order
   sceptre_object <- perform_status_check_and_update(sceptre_object, "set_analysis_parameters")
 
@@ -112,7 +114,8 @@ set_analysis_parameters <- function(sceptre_object,
     side = side, low_moi = sceptre_object@low_moi,
     grna_integration_strategy = grna_integration_strategy,
     resampling_approximation = resampling_approximation,
-    response_fit_method = response_fit_method
+    response_fit_method = response_fit_method,
+    grna_fit_method = grna_fit_method
   ) |> invisible()
 
   # 3. determine whether to reset response precomputations
@@ -149,6 +152,7 @@ set_analysis_parameters <- function(sceptre_object,
   sceptre_object@multiple_testing_method <- multiple_testing_method
   sceptre_object@grna_integration_strategy <- grna_integration_strategy
   sceptre_object <- set_response_fit_method(sceptre_object, response_fit_method)
+  sceptre_object <- set_grna_fit_method(sceptre_object, grna_fit_method)
   sceptre_object@covariate_matrix <- convert_covariate_df_to_design_matrix(
     covariate_data_frame = sceptre_object@covariate_data_frame,
     formula_object = formula_object

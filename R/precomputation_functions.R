@@ -562,7 +562,111 @@ perform_response_precomputations_from_matrix <- function(
 }
 
 
-perform_grna_precomputation <- function(trt_idxs, covariate_matrix, return_fitted_values) {
+perform_grna_precomputation <- function(
+    trt_idxs, covariate_matrix, return_fitted_values,
+    grna_fit_method = "glm.fit", prepared_design = NULL,
+    return_details = FALSE) {
+  if (!is.character(grna_fit_method) || length(grna_fit_method) != 1L ||
+      is.na(grna_fit_method) ||
+      !(grna_fit_method %in% c("glm.fit", "fast_logistic"))) {
+    stop(
+      "`grna_fit_method` must be a single string, either 'glm.fit' or ",
+      "'fast_logistic'.",
+      call. = FALSE
+    )
+  }
+  if (!is.logical(return_details) || length(return_details) != 1L ||
+      is.na(return_details)) {
+    stop("`return_details` must be TRUE or FALSE.", call. = FALSE)
+  }
+
+  if (identical(grna_fit_method, "glm.fit")) {
+    indicator <- integer(length = nrow(covariate_matrix))
+    indicator[trt_idxs] <- 1L
+    logistic_fit <- stats::glm.fit(y = indicator, x = covariate_matrix, family = stats::binomial())
+    if (return_fitted_values) {
+      out <- logistic_fit$fitted.values
+    } else {
+      out <- logistic_fit$coefficients
+    }
+    if (!return_details) return(out)
+    return(make_grna_fit_details(
+      value = out,
+      method_requested = grna_fit_method,
+      method_used = "glm.fit",
+      fallback_reason = NA_character_,
+      converged = isTRUE(logistic_fit$converged),
+      iterations = logistic_fit$iter
+    ))
+  }
+
+  if (!is.matrix(covariate_matrix) || !is.numeric(covariate_matrix)) {
+    stop("`covariate_matrix` must be a numeric matrix.", call. = FALSE)
+  }
+  trt_idxs_fast <- validate_grna_logistic_indices(
+    trt_idxs = trt_idxs,
+    n_cells = nrow(covariate_matrix)
+  )
+  if (is.null(prepared_design)) {
+    prepared_design <- prepare_grna_logistic_design(covariate_matrix)
+  } else {
+    validate_grna_logistic_prepared_design(
+      prepared_design = prepared_design,
+      covariate_matrix = covariate_matrix
+    )
+  }
+
+  fast_fit <- if (isFALSE(prepared_design$valid)) {
+    list(converged = FALSE, reason = prepared_design$reason)
+  } else {
+    fit_grna_logistic_prepared_cpp(
+      prepared = prepared_design,
+      treated_indices = trt_idxs_fast,
+      tolerance = 1e-8,
+      max_iterations = 25L,
+      max_step_halvings = 20L,
+      separation_eta_limit = 30,
+      rank_tolerance = 1e-12
+    )
+  }
+  coefficient_names <- colnames(covariate_matrix)
+  if (!is.null(coefficient_names) &&
+      length(fast_fit$coefficients) == length(coefficient_names)) {
+    names(fast_fit$coefficients) <- coefficient_names
+  }
+
+  fitted_probabilities <- fast_fit$fitted.values
+  coefficients <- fast_fit$coefficients
+  valid_probabilities <- is.numeric(fitted_probabilities) &&
+    length(fitted_probabilities) == nrow(covariate_matrix) &&
+    all(is.finite(fitted_probabilities)) &&
+    all(fitted_probabilities > 0 & fitted_probabilities < 1)
+  valid_coefficients <- is.numeric(coefficients) &&
+    length(coefficients) == ncol(covariate_matrix) &&
+    all(is.finite(coefficients))
+  fast_succeeded <- isTRUE(fast_fit$converged) &&
+    valid_probabilities && valid_coefficients
+
+  if (fast_succeeded) {
+    out <- if (return_fitted_values) fitted_probabilities else coefficients
+    if (!return_details) return(out)
+    return(make_grna_fit_details(
+      value = out,
+      method_requested = grna_fit_method,
+      method_used = "fast_logistic",
+      fallback_reason = NA_character_,
+      converged = TRUE,
+      iterations = fast_fit$iterations
+    ))
+  }
+
+  fallback_reason <- fast_fit$reason
+  if (isTRUE(fast_fit$converged) && !valid_probabilities) {
+    fallback_reason <- "invalid_fitted_probabilities"
+  } else if (isTRUE(fast_fit$converged) && !valid_coefficients) {
+    fallback_reason <- "invalid_coefficients"
+  }
+
   indicator <- integer(length = nrow(covariate_matrix))
   indicator[trt_idxs] <- 1L
   logistic_fit <- stats::glm.fit(y = indicator, x = covariate_matrix, family = stats::binomial())
@@ -571,7 +675,15 @@ perform_grna_precomputation <- function(trt_idxs, covariate_matrix, return_fitte
   } else {
     out <- logistic_fit$coefficients
   }
-  return(out)
+  if (!return_details) return(out)
+  make_grna_fit_details(
+    value = out,
+    method_requested = grna_fit_method,
+    method_used = "glm.fit",
+    fallback_reason = fallback_reason,
+    converged = isTRUE(logistic_fit$converged),
+    iterations = logistic_fit$iter
+  )
 }
 
 
