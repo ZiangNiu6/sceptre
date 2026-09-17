@@ -1,5 +1,19 @@
 # sceptre development version
 
+- Added opt-in `"rpt_spa_fast"` and `"rpt_spa_always_fast"` permutation-test
+  modes. They lazily prepare and reuse response geometry and second-order
+  zero-response moments across targets sharing the same response fit and cell
+  population. With six covariates, the synopsis contains 28 totals (21 second
+  moments, six first moments, and the zero-cell count). Moment initialization
+  retains a full exact-CGF audit, up to three exact polishing steps, exact-SPA
+  fallback, and the existing empirical fallback. The new modes use `1e-4` for
+  outer, compressed, and exact-audit tolerances without relaxing fixed-count
+  precision; they retain the 80-percent zero gate and 0.06 locality bound.
+  The original RPT/CRT modes and fitting defaults are unchanged. Detailed
+  outputs report acceleration paths, preparation failures, moment eligibility,
+  and tolerances. This is an experimental numerical acceleration, not a
+  guarantee of faster execution or statistically exact p-values.
+
 - The information-studentized CRT options `"crt_spa_fast"` and
   `"crt_spa_always_fast"` now use cached exact Bernoulli CGF evaluation instead
   of the earlier partial-normal approximation. They reuse untilted moments

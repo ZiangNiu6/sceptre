@@ -13,7 +13,8 @@
 #' @param resampling_approximation (optional; default `"skew_normal"`) a string
 #'   indicating the resampling approximation to make to the null distribution
 #'   of test statistics, one of `"skew_normal"`, `"no_approximation"`, `"rpt_spa"`,
-#'   `"rpt_spa_always"`, `"crt_spa"`, `"crt_spa_always"`, `"crt_spa_empirical"`,
+#'   `"rpt_spa_always"`, `"rpt_spa_fast"`, `"rpt_spa_always_fast"`,
+#'   `"crt_spa"`, `"crt_spa_always"`, `"crt_spa_empirical"`,
 #'   `"crt_spa_empirical_always"`, `"crt_spa_fast"`, `"crt_spa_always_fast"`,
 #'   `"crt_spa_empirical_fast"`, or `"crt_spa_empirical_always_fast"`.
 #'   The `"rpt_spa"` option uses a full-Newton information-studentized saddlepoint
@@ -21,6 +22,19 @@
 #'   empirical permutations if the solver fails. The `"rpt_spa_always"` option
 #'   attempts that SPA for every QC-passing pair and lazily generates an exact
 #'   fixed-count 4,999-permutation fallback bank only after an SPA attempt fails.
+#'   The optional `"rpt_spa_fast"` and `"rpt_spa_always_fast"` variants use a
+#'   second-order moment synopsis for zero responses (28 packed moments with
+#'   six design columns). They retain the corresponding screen and empirical
+#'   fallback, and lazily reuse a response context across pairs with the same
+#'   fitted response and cell set. Pair-specific response fits use separate
+#'   contexts. Moment acceleration requires at least 80% zero responses and a
+#'   maximum zero-block tilt of 0.06. The outer solver, compressed solver, and
+#'   exact-CGF audit use tolerance 1e-4, while fixed-count root precision is
+#'   unchanged. Up to three exact Newton polishing steps are allowed; ineligible
+#'   pairs or unsuccessful moment attempts use a full exact-CGF solver for the
+#'   same RPT equations,
+#'   followed by empirical fallback if needed. An exact-CGF audit is a numerical
+#'   check, not an exact p-value guarantee, and acceleration is not guaranteed.
 #'   These RPT options require `resampling_mechanism = "permutations"`.
 #'   The `"crt_spa"` option uses the analogous information-studentized
 #'   approximation after the existing 499-resample tail screen and falls back to
@@ -117,13 +131,13 @@ set_analysis_parameters <- function(sceptre_object,
     B2 <- 4999L
     B3 <- if (resampling_mechanism == "permutations") 24999L else 0L
   } else if (resampling_approximation %in% c(
-    "rpt_spa", "crt_spa", "crt_spa_fast", "crt_spa_empirical",
+    "rpt_spa", "rpt_spa_fast", "crt_spa", "crt_spa_fast", "crt_spa_empirical",
     "crt_spa_empirical_fast"
   )) {
     B2 <- 4999L # empirical fallback if the saddlepoint solver fails
     B3 <- 0L
   } else if (resampling_approximation %in% c(
-    "rpt_spa_always", "crt_spa_always", "crt_spa_always_fast",
+    "rpt_spa_always", "rpt_spa_always_fast", "crt_spa_always", "crt_spa_always_fast",
     "crt_spa_empirical_always", "crt_spa_empirical_always_fast"
   )) {
     B1 <- 0L # no central empirical screen; run SPA for every pair

@@ -107,9 +107,12 @@ run_perm_test_in_memory <- function(response_matrix, grna_assignments, covariate
   get_idx_f <- get_idx_vector_factory(calibration_check, indiv_nt_grna_idxs, grna_group_idxs, low_moi)
   response_ids <- unique(response_grna_group_pairs$response_id)
   fit_parametric_curve <- (resampling_approximation == "skew_normal")
-  use_rpt_spa <- identical(resampling_approximation, "rpt_spa")
-  use_rpt_spa_always <- identical(
-    resampling_approximation, "rpt_spa_always"
+  use_rpt_spa <- resampling_approximation %in% c("rpt_spa", "rpt_spa_fast")
+  use_rpt_spa_always <- resampling_approximation %in% c(
+    "rpt_spa_always", "rpt_spa_always_fast"
+  )
+  use_rpt_spa_fast <- resampling_approximation %in% c(
+    "rpt_spa_fast", "rpt_spa_always_fast"
   )
 
   # 1. subset covariate matrix to cells_in_use and then to nt cells (if applicable)
@@ -218,7 +221,8 @@ run_perm_test_in_memory <- function(response_matrix, grna_assignments, covariate
           covariate_matrix = covariate_matrix,
           use_rpt_spa = use_rpt_spa,
           use_rpt_spa_always = use_rpt_spa_always,
-          rpt_spa_fallback_bank_factory = rpt_spa_fallback_bank_factory
+          rpt_spa_fallback_bank_factory = rpt_spa_fallback_bank_factory,
+          use_rpt_spa_fast = use_rpt_spa_fast
         )
       } else {
         curr_response_result <- discovery_ntcells_perm_test(
@@ -228,7 +232,8 @@ run_perm_test_in_memory <- function(response_matrix, grna_assignments, covariate
           response_fit_method = response_fit_method,
           use_rpt_spa = use_rpt_spa,
           use_rpt_spa_always = use_rpt_spa_always,
-          rpt_spa_fallback_bank_factory = rpt_spa_fallback_bank_factory
+          rpt_spa_fallback_bank_factory = rpt_spa_fallback_bank_factory,
+          use_rpt_spa_fast = use_rpt_spa_fast
         )
       }
 

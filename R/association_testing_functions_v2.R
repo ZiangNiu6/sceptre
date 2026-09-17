@@ -74,13 +74,60 @@ make_rpt_spa_fallback_bank_factory <- function(
 }
 
 
+make_rpt_spa_response_context_factory <- function(a, w, Z, expression_vector) {
+  context <- NULL
+  initialized <- FALSE
+  preparation_error <- NULL
+  list(
+    get = function() {
+      if (!initialized) {
+        initialized <<- TRUE
+        context <<- tryCatch(
+          prepare_rpt_spa_response_cpp(
+            a = a, w = w, Z = Z, zero_mask = expression_vector == 0,
+            minimum_zero_fraction = 0.8, maximum_moment_degree = 2L
+          ),
+          error = function(error) {
+            preparation_error <<- error
+            NULL
+          }
+        )
+      }
+      # Retain the error for each pair's exact-SPA fallback diagnostics.
+      if (!is.null(preparation_error)) stop(preparation_error)
+      context
+    },
+    release = function() {
+      if (!is.null(context)) {
+        context_to_release <- context
+        context <<- NULL
+        release_rpt_spa_response_cpp(context_to_release)
+      }
+      invisible(NULL)
+    }
+  )
+}
+
+
 # workhorse function 1. permutations, glm factored out
 perm_test_glm_factored_out <- function(synthetic_idxs, B1, B2, B3, fit_parametric_curve, output_amount, grna_groups,
                                        expression_vector, pieces_precomp, get_idx_f, side_code,
                                        covariate_matrix = NULL, use_rpt_spa = FALSE,
                                        use_rpt_spa_always = FALSE,
-                                       rpt_spa_fallback_bank_factory = NULL) {
+                                       rpt_spa_fallback_bank_factory = NULL,
+                                       use_rpt_spa_fast = FALSE) {
   result_list_inner <- vector(mode = "list", length = length(grna_groups))
+  prepared_context <- NULL
+  if (use_rpt_spa_fast) {
+    # This worker-local context is created only when a pair reaches SPA.
+    context_factory <- make_rpt_spa_response_context_factory(
+      a = pieces_precomp$a,
+      w = if (use_rpt_spa_always) pieces_precomp$b else pieces_precomp$w,
+      Z = covariate_matrix, expression_vector = expression_vector
+    )
+    on.exit(context_factory$release(), add = TRUE)
+    prepared_context <- context_factory$get
+  }
   if (use_rpt_spa_always && is.null(rpt_spa_fallback_bank_factory)) {
     rpt_spa_fallback_bank_factory <- make_rpt_spa_fallback_bank_factory(B2)
   }
@@ -102,7 +149,9 @@ perm_test_glm_factored_out <- function(synthetic_idxs, B1, B2, B3, fit_parametri
         B1 = B1,
         B2 = B2,
         return_resampling_dist = (output_amount == 3L),
-        side_code = side_code
+        side_code = side_code,
+        use_moment = use_rpt_spa_fast,
+        prepared_context = prepared_context
       )
     } else if (use_rpt_spa_always) {
       result <- run_low_level_test_full_rpt_spa_always_v1(
@@ -114,7 +163,9 @@ perm_test_glm_factored_out <- function(synthetic_idxs, B1, B2, B3, fit_parametri
         trt_idxs = idxs$trt_idxs,
         n_trt = idxs$n_trt,
         side_code = side_code,
-        max_iterations = 50L
+        max_iterations = 50L,
+        use_moment = use_rpt_spa_fast,
+        prepared_context = prepared_context
       )
       if (isTRUE(result$needs_empirical_fallback)) {
         fallback_bank <- rpt_spa_fallback_bank_factory(
@@ -163,7 +214,8 @@ discovery_ntcells_perm_test <- function(synthetic_idxs, B1, B2, B3, fit_parametr
                                         response_fit_method = "sceptre",
                                         use_rpt_spa = FALSE,
                                         use_rpt_spa_always = FALSE,
-                                        rpt_spa_fallback_bank_factory = NULL) {
+                                        rpt_spa_fallback_bank_factory = NULL,
+                                        use_rpt_spa_fast = FALSE) {
   result_list_inner <- vector(mode = "list", length = length(grna_groups))
   if (use_rpt_spa_always && is.null(rpt_spa_fallback_bank_factory)) {
     rpt_spa_fallback_bank_factory <- make_rpt_spa_fallback_bank_factory(
@@ -196,7 +248,21 @@ discovery_ntcells_perm_test <- function(synthetic_idxs, B1, B2, B3, fit_parametr
       full_test_stat = !use_rpt_spa_always
     )
     # 4. run the association test
-    if (use_rpt_spa) {
+    if (use_rpt_spa_fast) {
+      # Different cell subsets/refits require a fresh, pair-scoped context.
+      result <- perm_test_glm_factored_out(
+        synthetic_idxs = synthetic_idxs, B1 = B1, B2 = B2, B3 = B3,
+        fit_parametric_curve = fit_parametric_curve,
+        output_amount = output_amount, grna_groups = curr_grna_group,
+        expression_vector = curr_expression_vector,
+        pieces_precomp = precomp_pieces,
+        get_idx_f = function(...) list(trt_idxs = trt_idxs, n_trt = n_trt),
+        side_code = side_code, covariate_matrix = curr_covariate_matrix,
+        use_rpt_spa = use_rpt_spa, use_rpt_spa_always = use_rpt_spa_always,
+        rpt_spa_fallback_bank_factory = rpt_spa_fallback_bank_factory,
+        use_rpt_spa_fast = TRUE
+      )[[1L]]
+    } else if (use_rpt_spa) {
       result <- run_low_level_test_full_rpt_spa_v1(
         y = curr_expression_vector,
         mu = precomp_pieces$mu,

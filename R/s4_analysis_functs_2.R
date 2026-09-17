@@ -311,8 +311,8 @@ run_sceptre_analysis_high_level <- function(sceptre_object, response_grna_group_
                                             output_amount, print_progress, parallel, n_processors, log_dir) {
   # if running permutations, generate the permutation idxs
   synthetic_idxs <- NULL
-  use_lazy_rpt_spa_fallback <- identical(
-    sceptre_object@resampling_approximation, "rpt_spa_always"
+  use_lazy_rpt_spa_fallback <- sceptre_object@resampling_approximation %in% c(
+    "rpt_spa_always", "rpt_spa_always_fast"
   )
   if (sceptre_object@run_permutations && !use_lazy_rpt_spa_fallback) {
     cat("Generating permutation resamples.")

@@ -37,7 +37,8 @@ set_analysis_parameters(
 \item{resampling_approximation}{(optional; default \code{"skew_normal"}) a string
 indicating the resampling approximation to make to the null distribution
 of test statistics, one of \code{"skew_normal"}, \code{"no_approximation"}, \code{"rpt_spa"},
-\code{"rpt_spa_always"}, \code{"crt_spa"}, \code{"crt_spa_always"}, \code{"crt_spa_empirical"},
+\code{"rpt_spa_always"}, \code{"rpt_spa_fast"}, \code{"rpt_spa_always_fast"},
+\code{"crt_spa"}, \code{"crt_spa_always"}, \code{"crt_spa_empirical"},
 \code{"crt_spa_empirical_always"}, \code{"crt_spa_fast"}, \code{"crt_spa_always_fast"},
 \code{"crt_spa_empirical_fast"}, or \code{"crt_spa_empirical_always_fast"}.
 The \code{"rpt_spa"} option uses a full-Newton information-studentized saddlepoint
@@ -45,6 +46,19 @@ approximation after a 499-permutation tail screen and falls back to 4,999
 empirical permutations if the solver fails. The \code{"rpt_spa_always"} option
 attempts that SPA for every QC-passing pair and lazily generates an exact
 fixed-count 4,999-permutation fallback bank only after an SPA attempt fails.
+The optional \code{"rpt_spa_fast"} and \code{"rpt_spa_always_fast"} variants use a
+second-order moment synopsis for zero responses (28 packed moments with
+six design columns). They retain the corresponding screen and empirical
+fallback, and lazily reuse a response context across pairs with the same
+fitted response and cell set. Pair-specific response fits use separate
+contexts. Moment acceleration requires at least 80\% zero responses and a
+maximum zero-block tilt of 0.06. The outer solver, compressed solver, and
+exact-CGF audit use tolerance 1e-4, while fixed-count root precision is
+unchanged. Up to three exact Newton polishing steps are allowed; ineligible
+pairs or unsuccessful moment attempts use a full exact-CGF solver for the
+same RPT equations,
+followed by empirical fallback if needed. An exact-CGF audit is a numerical
+check, not an exact p-value guarantee, and acceleration is not guaranteed.
 These RPT options require \code{resampling_mechanism = "permutations"}.
 The \code{"crt_spa"} option uses the analogous information-studentized
 approximation after the existing 499-resample tail screen and falls back to

@@ -3,6 +3,7 @@
 #include <RcppEigen.h>
 
 #include "rpt_spa.h"
+#include "rpt_spa_moment.h"
 #include "shared_low_level_functions.h"
 
 #include <algorithm>
@@ -36,6 +37,7 @@ namespace {
 constexpr double kTailTrigger = 0.02;
 constexpr double kMinimumPValue = 1.0e-250;
 constexpr double kSpaRootTolerance = 1.0e-5;
+constexpr double kMomentRootTolerance = 1.0e-4;
 constexpr const char* kStatisticId = "information_studentized_rpt_v1";
 constexpr const char* kEquationId = "rpt_information_conditional_kkt_v1";
 constexpr const char* kTailGeometry =
@@ -242,6 +244,95 @@ void validate_treated_indices(const IntegerVector& trt_idxs,
   }
 }
 
+// A worker-local R factory creates the response cache only when SPA is used.
+List run_moment_spa(const NumericVector& y,
+                    const NumericVector& a,
+                    const NumericVector& w,
+                    const NumericMatrix& Z,
+                    const IntegerVector& trt_idxs,
+                    const double target,
+                    const int score_sign,
+                    const bool outward,
+                    const int max_iterations,
+                    SEXP prepared_context) {
+  RObject context(prepared_context);
+  bool owned = false;
+  std::string failure;
+  List result;
+  try {
+    if (Rf_isFunction(prepared_context)) {
+      Function factory(prepared_context);
+      Language call(factory);
+      context = Rcpp::Rcpp_eval(call, R_GlobalEnv);
+      if (Rf_isNull(context)) stop("response moment preparation unavailable");
+    } else if (Rf_isNull(prepared_context)) {
+      LogicalVector zero_mask(y.size());
+      for (R_xlen_t i = 0; i < y.size(); ++i) zero_mask[i] = y[i] == 0.0;
+      context = sceptre::prepare_rpt_spa_response(a, w, Z, zero_mask, 0.8, 2);
+      owned = true;
+    }
+    result = outward
+        ? sceptre::rpt_spa_moment_outward_prepared(
+              context, trt_idxs, kMomentRootTolerance, kMomentRootTolerance,
+              max_iterations, 3, 0.06, kMomentRootTolerance)
+        : sceptre::rpt_spa_moment_prepared(
+              context, trt_idxs.size(), target, score_sign,
+              kMomentRootTolerance, kMomentRootTolerance,
+              max_iterations, 3, 0.06, kMomentRootTolerance);
+    if (owned) sceptre::release_rpt_spa_response(context);
+    return result;
+  } catch (const Rcpp::internal::InterruptedException&) {
+    if (owned) sceptre::release_rpt_spa_response(context);
+    throw;
+  } catch (const std::exception& error) {
+    failure = error.what();
+  } catch (...) {
+    if (owned) sceptre::release_rpt_spa_response(context);
+    throw;
+  }
+  if (owned) sceptre::release_rpt_spa_response(context);
+  // Unsupported preparation retains the original exact solver as a backup.
+  result = outward
+      ? sceptre::rpt_spa_full_outward(
+            a, w, Z, trt_idxs, kMomentRootTolerance, max_iterations)
+      : sceptre::rpt_spa_full(
+            a, w, Z, trt_idxs.size(), target, score_sign,
+            kMomentRootTolerance, max_iterations);
+  result["moment_preparation_failure"] = failure;
+  result["path"] = "original_exact_preparation_fallback";
+  return result;
+}
+
+void add_moment_output_diagnostics(List& out,
+                                   const List& diagnostics,
+                                   const bool attempted) {
+  out["spa_fast"] = true;
+  out["spa_experimental"] = true;
+  out["spa_attempted"] = attempted;
+  out["spa_solver_tolerance"] = kMomentRootTolerance;
+  out["spa_compressed_tolerance"] = kMomentRootTolerance;
+  out["spa_exact_audit_tolerance"] = kMomentRootTolerance;
+  const bool preparation_failed = diagnostics.containsElementNamed("moment_preparation_failure");
+  out["spa_cache_strategy"] = !attempted ? "not_attempted"
+      : (preparation_failed ? "original_exact" : "prepared_response");
+  out["spa_cgf_mode"] = !attempted ? "not_attempted"
+      : (preparation_failed ? "exact" : "moment_initialized_exact_audit");
+  out["spa_moment_degree"] = attempted
+      ? list_int_or_na(diagnostics, "maximum_moment_degree") : NA_INTEGER;
+  out["spa_packed_moment_count"] = attempted
+      ? list_int_or_na(diagnostics, "packed_moment_count") : NA_INTEGER;
+  out["spa_acceleration_path"] = list_string_or(diagnostics, "path", "not_attempted");
+  out["spa_acceleration_fallback_reason"] = list_string_or(
+      diagnostics, "moment_preparation_failure",
+      list_string_or(diagnostics, "moment_fallback_reason", ""));
+  out["spa_moment_eligible"] = attempted
+      ? LogicalVector::create(list_bool_or_false(diagnostics, "moment_eligible"))
+      : LogicalVector::create(NA_LOGICAL);
+  out["spa_exact_audit_passed"] = attempted
+      ? LogicalVector::create(list_bool_or_false(diagnostics, "exact_audit_passed"))
+      : LogicalVector::create(NA_LOGICAL);
+}
+
 }  // namespace
 
 // Information-studentized RPT with SCEPTRE's existing 499-permutation screen.
@@ -260,7 +351,9 @@ SEXP run_low_level_test_full_rpt_spa_v1(
     int B1,
     int B2,
     bool return_resampling_dist,
-    int side_code) {
+    int side_code,
+    bool use_moment = false,
+    SEXP prepared_context = R_NilValue) {
   if (B1 <= 0 || B2 <= 0) stop("B1 and B2 must be positive");
   if (side_code < -1 || side_code > 1) {
     stop("side_code must be -1, 0, or 1");
@@ -327,8 +420,11 @@ SEXP run_low_level_test_full_rpt_spa_v1(
 
     bool converged = false;
     try {
-      spa_diagnostics = sceptre::rpt_spa_full(
-          a, w, Z, n_trt, target, score_sign, kSpaRootTolerance, 50);
+      spa_diagnostics = use_moment
+          ? run_moment_spa(y, a, w, Z, trt_idxs, target, score_sign,
+                           false, 50, prepared_context)
+          : sceptre::rpt_spa_full(
+                a, w, Z, n_trt, target, score_sign, kSpaRootTolerance, 50);
       converged = list_bool_or_false(spa_diagnostics, "converged");
       spa_converged[0] = converged;
       spa_reason = list_string_or(
@@ -349,6 +445,10 @@ SEXP run_low_level_test_full_rpt_spa_v1(
           spa_diagnostics, "count_berry_esseen_ratio");
       spa_conditional_rate_correction = list_double_or_na(
           spa_diagnostics, "conditional_rate_correction");
+    } catch (const Rcpp::internal::InterruptedException&) {
+      throw;
+    } catch (const Rcpp::LongjumpException&) {
+      throw;
     } catch (const std::exception& error) {
       spa_converged[0] = false;
       spa_reason = std::string("input_or_solver_error: ") + error.what();
@@ -368,7 +468,7 @@ SEXP run_low_level_test_full_rpt_spa_v1(
       p = std::max(kMinimumPValue,
                    std::min(1.0, sidedness_multiplier * spa_p));
       stage = 2;
-      p_value_source = "rpt_spa";
+      p_value_source = use_moment ? "rpt_spa_fast" : "rpt_spa";
     } else {
       null_statistics = compute_null_full_statistics(
           a, w, D, B1, B2, n_trt, false, synthetic_idxs);
@@ -412,6 +512,9 @@ SEXP run_low_level_test_full_rpt_spa_v1(
       Named("outer_dimension") = Z.ncol() + 3,
       Named("spa_tail_geometry") = kTailGeometry,
       Named("spa_diagnostics") = spa_diagnostics);
+  if (use_moment) {
+    add_moment_output_diagnostics(out, spa_diagnostics, spa_reason != "not_attempted");
+  }
   if (return_resampling_dist) out["resampling_dist"] = null_statistics;
   return out;
 }
@@ -428,7 +531,9 @@ SEXP run_low_level_test_full_rpt_spa_always_v1(
     IntegerVector trt_idxs,
     int n_trt,
     int side_code,
-    int max_iterations = 50) {
+    int max_iterations = 50,
+    bool use_moment = false,
+    SEXP prepared_context = R_NilValue) {
   if (side_code < -1 || side_code > 1) {
     stop("side_code must be -1, 0, or 1");
   }
@@ -444,8 +549,13 @@ SEXP run_low_level_test_full_rpt_spa_always_v1(
                          : estimate_log_fold_change_v2(y, mu, trt_idxs, n_trt);
   List spa_diagnostics;
   try {
-    spa_diagnostics = sceptre::rpt_spa_full_outward(
-        a, w, Z, trt_idxs, kSpaRootTolerance, max_iterations);
+    spa_diagnostics = use_moment
+        ? run_moment_spa(y, a, w, Z, trt_idxs, NA_REAL, 1,
+                         true, max_iterations, prepared_context)
+        : sceptre::rpt_spa_full_outward(
+              a, w, Z, trt_idxs, kSpaRootTolerance, max_iterations);
+  } catch (const Rcpp::internal::InterruptedException&) {
+    throw;
   } catch (const std::exception& error) {
     stop(std::string("input_or_solver_error: ") + error.what());
   }
@@ -488,14 +598,14 @@ SEXP run_low_level_test_full_rpt_spa_always_v1(
     }
     if (std::isfinite(requested_p)) {
       p = std::max(kMinimumPValue, std::min(1.0, requested_p));
-      p_value_source = "rpt_spa_always";
+      p_value_source = use_moment ? "rpt_spa_always_fast" : "rpt_spa_always";
       needs_empirical_fallback = false;
     }
   }
 
   const NumericVector sn_params =
       NumericVector::create(NA_REAL, NA_REAL, NA_REAL);
-  return List::create(
+  List out = List::create(
       Named("p") = p,
       Named("z_orig") = z_orig,
       Named("lfc") = lfc,
@@ -544,6 +654,8 @@ SEXP run_low_level_test_full_rpt_spa_always_v1(
           list_numeric_vector_or_empty(spa_diagnostics, "state"),
       Named("spa_diagnostics") = spa_diagnostics,
       Named("resampling_dist") = NumericVector(0));
+  if (use_moment) add_moment_output_diagnostics(out, spa_diagnostics, true);
+  return out;
 }
 
 // Complete a failed RPT-SPA attempt with a fixed-count empirical bank. Each

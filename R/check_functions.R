@@ -208,7 +208,9 @@ check_set_analysis_parameters <- function(sceptre_object, formula_object, respon
     "crt_spa_empirical_always", "crt_spa_fast", "crt_spa_always_fast",
     "crt_spa_empirical_fast", "crt_spa_empirical_always_fast"
   )
-  rpt_spa_approximations <- c("rpt_spa", "rpt_spa_always")
+  rpt_spa_approximations <- c(
+    "rpt_spa", "rpt_spa_always", "rpt_spa_fast", "rpt_spa_always_fast"
+  )
   valid_resampling_approximations <- c(
     "skew_normal", "no_approximation", rpt_spa_approximations,
     crt_spa_approximations
