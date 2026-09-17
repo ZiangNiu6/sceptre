@@ -357,12 +357,12 @@ test_that("forced information SPA failure finalizes with the B2 bank", {
   )
   expect_length(attempt$resampling_dist, 0L)
   expect_identical(
-    attempt$spa_diagnostics$initial_exact_count,
-    sum(fixture$y > 0)
+    attempt$spa_diagnostics$cgf_mode,
+    "exact_bernoulli"
   )
   expect_identical(
-    attempt$spa_diagnostics$initial_bulk_count,
-    sum(fixture$y == 0)
+    attempt$spa_diagnostics$cache_strategy,
+    "cached_exact"
   )
 
   set.seed(20260910)
@@ -412,12 +412,12 @@ test_that("forced information SPA failure finalizes with the B2 bank", {
     "solver_disabled_max_iterations_zero"
   )
   expect_identical(
-    result$spa_diagnostics$initial_exact_count,
-    attempt$spa_diagnostics$initial_exact_count
+    result$spa_diagnostics$cgf_mode,
+    attempt$spa_diagnostics$cgf_mode
   )
   expect_identical(
-    result$spa_diagnostics$initial_bulk_count,
-    attempt$spa_diagnostics$initial_bulk_count
+    result$spa_diagnostics$cache_strategy,
+    attempt$spa_diagnostics$cache_strategy
   )
   expect_equal(
     result$resampling_dist,

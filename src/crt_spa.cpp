@@ -124,6 +124,38 @@ struct Evaluation {
   Boundary boundary;
 };
 
+struct ZeroMoments {
+  VectorXd moment;
+  MatrixXd Sgg;
+  bool all_propensities_interior = true;
+};
+
+Evaluation evaluate_crt_zero(const InfoCache& cache,
+                             const ZeroMoments& moments,
+                             const double target) {
+  Evaluation out;
+  out.moment = moments.moment;
+  out.Sgg = moments.Sgg;
+  if (!cache.information_invertible ||
+      out.moment.size() != cache.d || out.Sgg.rows() != cache.d ||
+      out.Sgg.cols() != cache.d || !out.moment.allFinite() ||
+      !out.Sgg.allFinite()) {
+    return out;
+  }
+  out.boundary = boundary_terms(out.moment, cache.C_inv);
+  if (!out.boundary.valid) return out;
+  out.residual.setZero(cache.d + 1);
+  out.residual[cache.d] = out.boundary.b - target;
+  out.jacobian.setZero(cache.d + 1, cache.d + 1);
+  out.jacobian.block(0, 0, cache.d, cache.d) =
+      MatrixXd::Identity(cache.d, cache.d);
+  out.jacobian.block(0, cache.d, cache.d, 1) = -out.boundary.grad;
+  out.jacobian.block(cache.d, 0, 1, cache.d) =
+      (out.Sgg * out.boundary.grad).transpose();
+  out.valid = out.residual.allFinite() && out.jacobian.allFinite();
+  return out;
+}
+
 Evaluation evaluate_crt_exact(const InfoCache& cache,
                               const VectorXd& x,
                               const double target) {
@@ -346,7 +378,8 @@ InfoCache build_cache(const Rcpp::NumericVector& a,
                       const Rcpp::NumericVector& propensity,
                       const int score_sign,
                       const bool require_interior_propensity = true,
-                      const bool require_supported_geometry = true) {
+                      const bool require_supported_geometry = true,
+                      ZeroMoments* zero_moments = nullptr) {
   const int n = a.size();
   const int p = Z.ncol();
   if (n < 2 || p < 1 || Z.nrow() != n || w.size() != n ||
@@ -368,6 +401,11 @@ InfoCache build_cache(const Rcpp::NumericVector& a,
   cache.weights.resize(n);
   MatrixXd C = MatrixXd::Zero(p, p);
   VectorXd weighted_z = VectorXd::Zero(p);
+  if (zero_moments != nullptr) {
+    zero_moments->moment = VectorXd::Zero(cache.d);
+    zero_moments->Sgg = MatrixXd::Zero(cache.d, cache.d);
+    zero_moments->all_propensities_interior = true;
+  }
 
   for (int i = 0; i < n; ++i) {
     if (!std::isfinite(a[i])) Rcpp::stop("a must be finite");
@@ -403,6 +441,23 @@ InfoCache build_cache(const Rcpp::NumericVector& a,
     if (std::abs(Z(i, 0) - 1.0) > 1e-10) {
       cache.leading_intercept = false;
     }
+    if (zero_moments != nullptr) {
+      if (propensity[i] <= 0.0 || propensity[i] >= 1.0) {
+        zero_moments->all_propensities_interior = false;
+      }
+      // Preserve the exact evaluator's logit/expit round trip and summation
+      // order while the feature row is already being constructed.
+      const double pi = expit_stable(cache.offsets[i]);
+      const double h = pi * (1.0 - pi);
+      const double* g = cache.G.data() + i;
+      for (int j = 0; j < cache.d; ++j) {
+        const double gj = g[j * n];
+        zero_moments->moment[j] += pi * gj;
+        for (int k = 0; k <= j; ++k) {
+          zero_moments->Sgg(j, k) += h * gj * g[k * n];
+        }
+      }
+    }
   }
 
   if (require_supported_geometry && !cache.leading_intercept) {
@@ -410,6 +465,7 @@ InfoCache build_cache(const Rcpp::NumericVector& a,
   }
 
   symmetrize_lower(C);
+  if (zero_moments != nullptr) symmetrize_lower(zero_moments->Sgg);
   if (!C.allFinite()) {
     Rcpp::stop("Z transpose diag(w) Z must be finite");
   }
@@ -453,10 +509,13 @@ Rcpp::List run_crt_full(const InfoCache& cache,
                         const double target,
                         const double tolerance,
                         const int max_iterations,
-                        const int minimum_updates = 0) {
+                        const int minimum_updates = 0,
+                        const Evaluation* zero_evaluation = nullptr) {
   VectorXd x = VectorXd::Zero(cache.d + 1);
   const std::vector<double> empty_history;
-  Evaluation base = evaluate_crt_exact(cache, x, target);
+  Evaluation base = zero_evaluation == nullptr
+                        ? evaluate_crt_exact(cache, x, target)
+                        : *zero_evaluation;
   if (!base.valid) {
     return failure_result(cache, "invalid_center", target, kNaN, 0, kNaN,
                           empty_history, x, 1);
@@ -519,6 +578,42 @@ Rcpp::List run_crt_full(const InfoCache& cache,
         static_cast<int>(history.size()) + 1);
   }
   return finalize_crt(cache, x, current, center, target, updates, history);
+}
+
+Rcpp::List mark_cached_exact(Rcpp::List out) {
+  out["cgf_mode"] = "exact_bernoulli";
+  out["cache_strategy"] = "cached_exact";
+  return out;
+}
+
+Rcpp::List cached_outward_result(Rcpp::List out,
+                                  const double base_center,
+                                  const double observed_target,
+                                  const int score_sign) {
+  out["base_center"] = base_center;
+  out["observed_target"] = observed_target;
+  out["outward_score_sign"] = score_sign;
+  return mark_cached_exact(out);
+}
+
+Rcpp::List cached_outward_failure(const InfoCache& cache,
+                                   const std::string& reason,
+                                   const double target,
+                                   const double center,
+                                   const double observed,
+                                   const int score_sign,
+                                   const int exact_evaluations) {
+  const VectorXd state = VectorXd::Zero(cache.d + 1);
+  const double residual = reason == "central_target_requires_empirical_fallback"
+                              ? 0.0
+                              : (reason == "non_interior_propensity"
+                                     ? NA_REAL : kNaN);
+  Rcpp::List out = failure_result(
+      cache, reason, target, center, 0, residual,
+      std::vector<double>(), state, exact_evaluations);
+  return cached_outward_result(
+      out, std::isfinite(center) ? center : NA_REAL,
+      std::isfinite(observed) ? observed : NA_REAL, score_sign);
 }
 
 }  // namespace
@@ -692,6 +787,130 @@ Rcpp::List crt_spa_full_outward(
   return out;
 }
 
+Rcpp::List crt_spa_full_cached(const Rcpp::NumericVector& a,
+                               const Rcpp::NumericVector& w,
+                               const Rcpp::NumericMatrix& Z,
+                               const Rcpp::NumericVector& propensity,
+                               const double target,
+                               const int score_sign,
+                               const double tolerance,
+                               const int max_iterations) {
+  validate_solver_controls(target, tolerance, max_iterations);
+  ZeroMoments moments;
+  const InfoCache cache = build_cache(
+      a, w, Z, propensity, score_sign, true, true, &moments);
+  const Evaluation base = evaluate_crt_zero(cache, moments, target);
+  return mark_cached_exact(run_crt_full(
+      cache, target, tolerance, max_iterations, 0, &base));
+}
+
+Rcpp::List crt_spa_full_outward_cached(
+    const Rcpp::NumericVector& a,
+    const Rcpp::NumericVector& w,
+    const Rcpp::NumericMatrix& Z,
+    const Rcpp::NumericVector& propensity,
+    const Rcpp::IntegerVector& treated_indices,
+    const double tolerance,
+    const int max_iterations) {
+  validate_solver_controls(0.0, tolerance, max_iterations);
+  ZeroMoments moments;
+  InfoCache cache = build_cache(
+      a, w, Z, propensity, 1, false, false, &moments);
+  std::vector<int> treated(treated_indices.size());
+  for (R_xlen_t j = 0; j < treated_indices.size(); ++j) {
+    if (treated_indices[j] == NA_INTEGER || treated_indices[j] < 1 ||
+        treated_indices[j] > cache.n) {
+      Rcpp::stop("treated_indices contains an invalid one-based index");
+    }
+    treated[j] = treated_indices[j] - 1;
+  }
+  std::vector<int> sorted_treated = treated;
+  std::sort(sorted_treated.begin(), sorted_treated.end());
+  if (std::adjacent_find(sorted_treated.begin(), sorted_treated.end()) !=
+      sorted_treated.end()) {
+    Rcpp::stop("treated_indices cannot contain duplicates");
+  }
+
+  double observed_U = 0.0;
+  double observed_weight = 0.0;
+  VectorXd observed_B = VectorXd::Zero(cache.p);
+  for (std::size_t j = 0; j < treated.size(); ++j) {
+    const int index = treated[j];
+    observed_U += cache.G(index, 0);
+    observed_weight += cache.weights[index];
+    observed_B += cache.G.row(index).segment(1, cache.p).transpose();
+  }
+  const double projection = cache.information_invertible
+                                ? observed_B.dot(cache.C_inv * observed_B)
+                                : kNaN;
+  const double observed_information = observed_weight - projection;
+  const double information_scale =
+      std::max(std::abs(observed_weight), std::abs(projection));
+  const double observed =
+      std::isfinite(observed_U) && std::isfinite(observed_information) &&
+              std::isfinite(information_scale) && information_scale > 0.0 &&
+              observed_information > 1.0e-14 * information_scale
+          ? observed_U / std::sqrt(observed_information)
+          : kNaN;
+  if (!cache.information_invertible) {
+    return cached_outward_failure(
+        cache, "singular_information_geometry", kNaN, kNaN, kNaN,
+        NA_INTEGER, 0);
+  }
+  if (!std::isfinite(observed)) {
+    return cached_outward_failure(
+        cache, "invalid_observed_studentizer", kNaN, kNaN, kNaN,
+        NA_INTEGER, 0);
+  }
+  if (!cache.leading_intercept) {
+    return cached_outward_failure(
+        cache, "unsupported_spa_geometry_no_intercept", observed, kNaN,
+        observed, NA_INTEGER, 0);
+  }
+  const Evaluation positive_base = evaluate_crt_zero(cache, moments, observed);
+  if (!positive_base.valid || !std::isfinite(positive_base.boundary.b)) {
+    return cached_outward_failure(
+        cache, "invalid_center", observed, kNaN, observed, NA_INTEGER, 1);
+  }
+  const double base_center = positive_base.boundary.b;
+  if (!moments.all_propensities_interior) {
+    return cached_outward_failure(
+        cache, "non_interior_propensity", observed, base_center,
+        observed, NA_INTEGER, 1);
+  }
+  const double displacement = observed - base_center;
+  if (displacement == 0.0) {
+    return cached_outward_failure(
+        cache, "central_target_requires_empirical_fallback", observed,
+        base_center, observed, NA_INTEGER, 1);
+  }
+
+  const int score_sign = displacement > 0.0 ? 1 : -1;
+  const double target = static_cast<double>(score_sign) * observed;
+  cache.score_sign = score_sign;
+  if (score_sign == -1) {
+    // Reflect only the score coordinate. The nuisance geometry and its
+    // factorization are unchanged, so no second n-row cache is needed.
+    for (int i = 0; i < cache.n; ++i) cache.G(i, 0) = -cache.G(i, 0);
+    moments.moment[0] = -moments.moment[0];
+    for (int j = 1; j < cache.d; ++j) {
+      moments.Sgg(0, j) = -moments.Sgg(0, j);
+      moments.Sgg(j, 0) = -moments.Sgg(j, 0);
+    }
+  }
+  if (max_iterations == 0) {
+    Rcpp::List out = failure_result(
+        cache, "solver_disabled_max_iterations_zero", target,
+        static_cast<double>(score_sign) * base_center, 0, NA_REAL,
+        std::vector<double>(), VectorXd::Zero(cache.d + 1), 1);
+    return cached_outward_result(out, base_center, observed, score_sign);
+  }
+  const Evaluation base = evaluate_crt_zero(cache, moments, target);
+  Rcpp::List out = run_crt_full(
+      cache, target, tolerance, max_iterations, 1, &base);
+  return cached_outward_result(out, base_center, observed, score_sign);
+}
+
 }  // namespace sceptre
 
 // [[Rcpp::export]]
@@ -705,4 +924,30 @@ Rcpp::List crt_spa_full_cpp(const Rcpp::NumericVector& a,
                             const int max_iterations = 50) {
   return sceptre::crt_spa_full(a, w, Z, propensity, target, score_sign,
                                tolerance, max_iterations);
+}
+
+// [[Rcpp::export]]
+Rcpp::List crt_spa_full_cached_cpp(const Rcpp::NumericVector& a,
+                                    const Rcpp::NumericVector& w,
+                                    const Rcpp::NumericMatrix& Z,
+                                    const Rcpp::NumericVector& propensity,
+                                    const double target,
+                                    const int score_sign = 1,
+                                    const double tolerance = 1e-5,
+                                    const int max_iterations = 50) {
+  return sceptre::crt_spa_full_cached(
+      a, w, Z, propensity, target, score_sign, tolerance, max_iterations);
+}
+
+// [[Rcpp::export]]
+Rcpp::List crt_spa_full_outward_cached_cpp(
+    const Rcpp::NumericVector& a,
+    const Rcpp::NumericVector& w,
+    const Rcpp::NumericMatrix& Z,
+    const Rcpp::NumericVector& propensity,
+    const Rcpp::IntegerVector& treated_indices,
+    const double tolerance = 1e-5,
+    const int max_iterations = 50) {
+  return sceptre::crt_spa_full_outward_cached(
+      a, w, Z, propensity, treated_indices, tolerance, max_iterations);
 }

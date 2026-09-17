@@ -296,8 +296,8 @@ SEXP run_low_level_test_full_crt_spa_v1(
     bool converged = false;
     try {
       spa_diagnostics = use_fast
-                       ? sceptre::crt_spa_full_fast(
-                             a, w, y, Z, fitted_probabilities, target,
+                       ? sceptre::crt_spa_full_cached(
+                             a, w, Z, fitted_probabilities, target,
                              score_sign, kSpaRootTolerance, 50)
                        : sceptre::crt_spa_full(
                              a, w, Z, fitted_probabilities, target,
@@ -359,6 +359,15 @@ SEXP run_low_level_test_full_crt_spa_v1(
       Named("spa_r_lr") = spa_r_lr,
       Named("spa_q_lr") = spa_q_lr,
       Named("spa_diagnostics") = spa_diagnostics);
+  if (use_fast) {
+    const bool attempted = spa_reason != "not_attempted";
+    out["spa_cgf_mode"] = list_string_or(
+        spa_diagnostics, "cgf_mode",
+        attempted ? "exact_bernoulli" : "not_attempted");
+    out["spa_cache_strategy"] = list_string_or(
+        spa_diagnostics, "cache_strategy",
+        attempted ? "cached_exact" : "not_attempted");
+  }
   if (return_resampling_dist) out["resampling_dist"] = null_statistics;
   return out;
 }
@@ -418,8 +427,8 @@ SEXP run_low_level_test_full_crt_spa_always_v1(
   List spa_diagnostics;
   try {
     spa_diagnostics = use_fast
-                          ? sceptre::crt_spa_full_outward_fast(
-                                a, w, y, Z, fitted_probabilities, trt_idxs,
+                          ? sceptre::crt_spa_full_outward_cached(
+                                a, w, Z, fitted_probabilities, trt_idxs,
                                 kSpaRootTolerance, max_iterations)
                           : sceptre::crt_spa_full_outward(
                                 a, w, Z, fitted_probabilities, trt_idxs,
@@ -477,7 +486,7 @@ SEXP run_low_level_test_full_crt_spa_always_v1(
 
   const NumericVector sn_params =
       NumericVector::create(NA_REAL, NA_REAL, NA_REAL);
-  return List::create(
+  List out = List::create(
       Named("p") = p,
       Named("z_orig") = z_orig,
       Named("lfc") = lfc,
@@ -516,6 +525,13 @@ SEXP run_low_level_test_full_crt_spa_always_v1(
           list_numeric_vector_or_empty(spa_diagnostics, "state"),
       Named("spa_diagnostics") = spa_diagnostics,
       Named("resampling_dist") = NumericVector(0));
+  if (use_fast) {
+    out["spa_cgf_mode"] = list_string_or(
+        spa_diagnostics, "cgf_mode", "unknown");
+    out["spa_cache_strategy"] = list_string_or(
+        spa_diagnostics, "cache_strategy", "unknown");
+  }
+  return out;
 }
 
 // Complete a failed information-SPA attempt against a lazily generated B2

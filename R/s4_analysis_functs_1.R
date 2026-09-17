@@ -10,7 +10,40 @@
 #' @param formula_object (optional) a formula object specifying how to adjust for the covariates in the model
 #' @param side (optional; default `"both"`) the sidedness of the test, one of `"left"`, `"right"`, or `"both"`
 #' @param grna_integration_strategy (optional; default `"union"`) a string specifying the gRNA integration strategy, either `"singleton"`, `"union"`, or `"bonferroni"`
-#' @param resampling_approximation (optional; default `"skew_normal"`) a string indicating the resampling approximation to make to the null distribution of test statistics, one of `"skew_normal"`, `"no_approximation"`, `"rpt_spa"`, `"rpt_spa_always"`, `"crt_spa"`, `"crt_spa_always"`, `"crt_spa_empirical"`, `"crt_spa_empirical_always"`, `"crt_spa_fast"`, `"crt_spa_always_fast"`, `"crt_spa_empirical_fast"`, or `"crt_spa_empirical_always_fast"`. The `"rpt_spa"` option uses a full-Newton information-studentized saddlepoint approximation after a 499-permutation tail screen and falls back to 4,999 empirical permutations if the solver fails. The `"rpt_spa_always"` option attempts that SPA for every QC-passing pair and lazily generates an exact fixed-count 4,999-permutation fallback bank only after an SPA attempt fails. These RPT options require `resampling_mechanism = "permutations"`. The `"crt_spa"` option uses the analogous information-studentized approximation after the existing 499-resample tail screen and falls back to 4,999 empirical CRT resamples if the solver fails. The `"crt_spa_always"` option attempts that information-studentized SPA for every QC-passing pair and lazily generates a 4,999-resample empirical fallback bank only after an SPA attempt fails. The `"crt_spa_empirical"` and `"crt_spa_empirical_always"` options apply the analogous adaptive and SPA-first strategies to the empirically studentized CRT statistic. Appending `"_fast"` selects the corresponding partial-normal CGF acceleration while preserving the base method's resampling and fallback strategy. Following the fastSPA-style sparse-outcome construction, the fast partition initially retains cells with nonzero observed response as exact Bernoulli terms and replaces the zero-response block by its moment-matched Gaussian CGF. It then promotes any Gaussian-block cell whose absolute saddlepoint tilt exceeds 0.25 and re-solves until the partition passes its diagnostics. If no zero-response cells remain, the fast CGF is the exact Bernoulli CGF. The method requests the ordinary empirical fallback if the directional Berry--Esseen diagnostic remains above 0.25 or the solver otherwise fails. CRT saddlepoint options require `resampling_mechanism = "crt"`.
+#' @param resampling_approximation (optional; default `"skew_normal"`) a string
+#'   indicating the resampling approximation to make to the null distribution
+#'   of test statistics, one of `"skew_normal"`, `"no_approximation"`, `"rpt_spa"`,
+#'   `"rpt_spa_always"`, `"crt_spa"`, `"crt_spa_always"`, `"crt_spa_empirical"`,
+#'   `"crt_spa_empirical_always"`, `"crt_spa_fast"`, `"crt_spa_always_fast"`,
+#'   `"crt_spa_empirical_fast"`, or `"crt_spa_empirical_always_fast"`.
+#'   The `"rpt_spa"` option uses a full-Newton information-studentized saddlepoint
+#'   approximation after a 499-permutation tail screen and falls back to 4,999
+#'   empirical permutations if the solver fails. The `"rpt_spa_always"` option
+#'   attempts that SPA for every QC-passing pair and lazily generates an exact
+#'   fixed-count 4,999-permutation fallback bank only after an SPA attempt fails.
+#'   These RPT options require `resampling_mechanism = "permutations"`.
+#'   The `"crt_spa"` option uses the analogous information-studentized
+#'   approximation after the existing 499-resample tail screen and falls back to
+#'   4,999 empirical CRT resamples if the solver fails. The `"crt_spa_always"`
+#'   option attempts that information-studentized SPA for every QC-passing pair
+#'   and lazily generates a 4,999-resample empirical fallback bank only after an
+#'   SPA attempt fails. The `"crt_spa_fast"` and `"crt_spa_always_fast"` options
+#'   use cached exact Bernoulli CGF evaluation for the corresponding information
+#'   tests: they reuse untilted moments and score-direction geometry without a
+#'   Gaussian approximation, while retaining the same Newton equations, root
+#'   tolerance, screening, and empirical fallback. These two options replace
+#'   their earlier partial-normal implementations; "exact" describes the CGF,
+#'   not the resulting SPA p-value approximation.
+#'   The `"crt_spa_empirical"` and `"crt_spa_empirical_always"` options apply the
+#'   analogous adaptive and SPA-first strategies to the empirically studentized
+#'   CRT statistic. Only their `"_fast"` variants retain the experimental
+#'   partial-normal CGF approximation: nonzero responses start in the exact
+#'   Bernoulli block and zero responses in a moment-matched Gaussian block.
+#'   Gaussian-block cells with absolute saddlepoint tilt above 0.25 are promoted
+#'   to the exact block, and the solver is repeated. If no Gaussian cells remain,
+#'   the CGF is exact. An excessive directional Berry--Esseen diagnostic (above
+#'   0.25) or solver failure requests the ordinary empirical fallback. All CRT
+#'   saddlepoint options require `resampling_mechanism = "crt"`.
 #' @param control_group (optional) a string specifying the control group to use in the differential expression analysis, either `"complement"` or `"nt_cells"`
 #' @param resampling_mechanism (optional) a string specifying the resampling mechanism to use, either `"permutations"` or `"crt"`
 #' @param multiple_testing_method (optional; default `"BH"`) a string specifying the multiple testing correction method to use; see `p.adjust.methods` for options

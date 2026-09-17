@@ -33,6 +33,14 @@ crt_spa_full_cpp <- function(a, w, Z, propensity, target, score_sign = 1L, toler
     .Call(`_sceptre_crt_spa_full_cpp`, a, w, Z, propensity, target, score_sign, tolerance, max_iterations)
 }
 
+crt_spa_full_cached_cpp <- function(a, w, Z, propensity, target, score_sign = 1L, tolerance = 1e-5, max_iterations = 50L) {
+    .Call(`_sceptre_crt_spa_full_cached_cpp`, a, w, Z, propensity, target, score_sign, tolerance, max_iterations)
+}
+
+crt_spa_full_outward_cached_cpp <- function(a, w, Z, propensity, treated_indices, tolerance = 1e-5, max_iterations = 50L) {
+    .Call(`_sceptre_crt_spa_full_outward_cached_cpp`, a, w, Z, propensity, treated_indices, tolerance, max_iterations)
+}
+
 crt_spa_full_fast_cpp <- function(a, w, y, Z, propensity, target, score_sign = 1L, tolerance = 1e-5, max_iterations = 50L) {
     .Call(`_sceptre_crt_spa_full_fast_cpp`, a, w, y, Z, propensity, target, score_sign, tolerance, max_iterations)
 }

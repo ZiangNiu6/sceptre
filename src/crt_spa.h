@@ -29,6 +29,26 @@ Rcpp::List crt_spa_full_outward(
     double tolerance = 1e-5,
     int max_iterations = 50);
 
+// Cached exact counterparts. Untilted moments are accumulated during cache
+// construction and reused by the same Full Newton solver and Bernoulli CGF.
+Rcpp::List crt_spa_full_cached(const Rcpp::NumericVector& a,
+                               const Rcpp::NumericVector& w,
+                               const Rcpp::NumericMatrix& Z,
+                               const Rcpp::NumericVector& propensity,
+                               double target,
+                               int score_sign = 1,
+                               double tolerance = 1e-5,
+                               int max_iterations = 50);
+
+Rcpp::List crt_spa_full_outward_cached(
+    const Rcpp::NumericVector& a,
+    const Rcpp::NumericVector& w,
+    const Rcpp::NumericMatrix& Z,
+    const Rcpp::NumericVector& propensity,
+    const Rcpp::IntegerVector& treated_indices,
+    double tolerance = 1e-5,
+    int max_iterations = 50);
+
 }  // namespace sceptre
 
 #endif  // SCEPTRE_CRT_SPA_H

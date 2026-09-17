@@ -1,5 +1,16 @@
 # sceptre development version
 
+- The information-studentized CRT options `"crt_spa_fast"` and
+  `"crt_spa_always_fast"` now use cached exact Bernoulli CGF evaluation instead
+  of the earlier partial-normal approximation. They reuse untilted moments
+  and reflect the score direction without rebuilding the dense cache, while
+  retaining the original Newton equations, tolerance, tail mapping, screening,
+  and empirical fallback. Their result diagnostics identify
+  `spa_cgf_mode = "exact_bernoulli"` and `spa_cache_strategy = "cached_exact"`
+  when SPA is attempted. The ordinary information-SPA modes remain unchanged.
+  The empirical-SPA `"_fast"` options and internal experimental partial-normal
+  solver functions retain their previous behavior.
+
 - Added an opt-in `grna_fit_method = "fast_logistic"` implementation for the
   per-target binary-logistic X given Z nuisance fits used by CRT analyses. It
   computes the same unpenalized binomial-logit estimator as the default
