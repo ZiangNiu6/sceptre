@@ -946,7 +946,7 @@ Rcpp::List rpt_spa_full_cpp(const Rcpp::NumericVector& a,
                             const int m,
                             const double target,
                             const int score_sign = 1,
-                            const double tolerance = 1e-5,
+                            const double tolerance = 1e-4,
                             const int max_iterations = 50) {
   return sceptre::rpt_spa_full(a, w, Z, m, target, score_sign, tolerance,
                                max_iterations);

@@ -17,6 +17,10 @@
 #'   `"crt_spa"`, `"crt_spa_always"`, `"crt_spa_empirical"`,
 #'   `"crt_spa_empirical_always"`, `"crt_spa_fast"`, `"crt_spa_always_fast"`,
 #'   `"crt_spa_empirical_fast"`, or `"crt_spa_empirical_always_fast"`.
+#'   All SPA options use a Newton root tolerance of 1e-4, including moment
+#'   initialization, exact-CGF audits, polishing, and exact-solver fallback.
+#'   This bounds solver residuals, not p-value error. Fixed-count inner-root
+#'   precision and numerical and approximation safety checks are unchanged.
 #'   The `"rpt_spa"` option uses a full-Newton information-studentized saddlepoint
 #'   approximation after a 499-permutation tail screen and falls back to 4,999
 #'   empirical permutations if the solver fails. The `"rpt_spa_always"` option

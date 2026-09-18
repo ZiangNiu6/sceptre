@@ -32,17 +32,17 @@
   )
 }
 
-test_that("native SPA solvers default to a unified 1e-5 root tolerance", {
-  expect_identical(formals(crt_spa_full_cpp)$tolerance, 1e-5)
-  expect_identical(formals(crt_empirical_spa_full_cpp)$tolerance, 1e-5)
-  expect_identical(formals(crt_spa_full_fast_cpp)$tolerance, 1e-5)
+test_that("native SPA solvers default to a unified 1e-4 root tolerance", {
+  expect_identical(formals(crt_spa_full_cpp)$tolerance, 1e-4)
+  expect_identical(formals(crt_empirical_spa_full_cpp)$tolerance, 1e-4)
+  expect_identical(formals(crt_spa_full_fast_cpp)$tolerance, 1e-4)
   expect_identical(
     formals(crt_spa_full_outward_fast_cpp)$tolerance,
-    1e-5
+    1e-4
   )
   expect_identical(
     formals(crt_empirical_spa_full_fast_cpp)$tolerance,
-    1e-5
+    1e-4
   )
 })
 

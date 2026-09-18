@@ -14,7 +14,7 @@ Rcpp::List rpt_spa_full(const Rcpp::NumericVector& a,
                         int m,
                         double target,
                         int score_sign = 1,
-                        double tolerance = 1e-5,
+                        double tolerance = 1e-4,
                         int max_iterations = 50);
 
 // Evaluate the observed information statistic, reflect a left-tail target,
@@ -24,7 +24,7 @@ Rcpp::List rpt_spa_full_outward(
     const Rcpp::NumericVector& w,
     const Rcpp::NumericMatrix& Z,
     const Rcpp::IntegerVector& treated_indices,
-    double tolerance = 1e-5,
+    double tolerance = 1e-4,
     int max_iterations = 50);
 
 }  // namespace sceptre

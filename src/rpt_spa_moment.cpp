@@ -70,6 +70,9 @@ struct InfoCache {
   MatrixXd G;  // Columns: signed a, then w * Z.
   MatrixXd C_inv;
   VectorXd weights;
+  VectorXd positive_feature_sums;
+  MatrixXd positive_feature_crossproducts;
+  MatrixXd positive_feature_centered_crossproducts;
 };
 
 struct Boundary {
@@ -128,13 +131,16 @@ struct CountProfile {
 };
 
 struct SolverCounters {
+  int analytic_center_evaluations = 0;
   int exact_evaluations = 0;
   int count_passes = 0;
+  int count_stagnations = 0;
   int gamma_iterations = 0;
   int gamma_warm_starts = 0;
   int gamma_cold_retries = 0;
   int compressed_evaluations = 0;
   int compressed_count_passes = 0;
+  int compressed_count_stagnations = 0;
   int compressed_exception_passes = 0;
   int compressed_gamma_iterations = 0;
   int compressed_gamma_warm_starts = 0;
@@ -445,6 +451,35 @@ ZeroAggregate evaluate_zero_aggregate(const MomentSynopsis& synopsis,
   return out;
 }
 
+// Short nonnegative blocks plus compensated reduction avoid platform-dependent
+// long-double precision without a serial compensation dependency at every cell.
+class CountSum {
+ public:
+  void add(const double value) {
+    block_sum_ += value;
+    if (++block_size_ == 32) {
+      add_block(block_sum_);
+      block_sum_ = 0.0;
+      block_size_ = 0;
+    }
+  }
+  double value() const {
+    return sum_ + (block_sum_ - correction_);
+  }
+
+ private:
+  void add_block(const double value) {
+    const double corrected = value - correction_;
+    const double next = sum_ + corrected;
+    correction_ = (next - sum_) - corrected;
+    sum_ = next;
+  }
+  double sum_ = 0.0;
+  double correction_ = 0.0;
+  double block_sum_ = 0.0;
+  int block_size_ = 0;
+};
+
 bool count_at_gamma(const VectorXd& linear_predictor,
                     const double gamma,
                     double& count,
@@ -453,19 +488,20 @@ bool count_at_gamma(const VectorXd& linear_predictor,
   if (!std::isfinite(gamma)) return false;
   ++counters.count_passes;
 
-  long double count_sum = 0.0L;
-  long double variance_sum = 0.0L;
+  CountSum count_sum;
+  CountSum variance_sum;
   for (Eigen::Index i = 0; i < linear_predictor.size(); ++i) {
+    if ((i & 8191) == 0) Rcpp::checkUserInterrupt();
     const double value = linear_predictor[i] + gamma;
     if (std::isnan(value)) return false;
     const double probability = expit_stable(value);
     if (!std::isfinite(probability)) return false;
     const double h = probability * (1.0 - probability);
-    count_sum += static_cast<long double>(probability);
-    variance_sum += static_cast<long double>(h);
+    count_sum.add(probability);
+    variance_sum.add(h);
   }
-  count = static_cast<double>(count_sum);
-  variance = static_cast<double>(variance_sum);
+  count = count_sum.value();
+  variance = variance_sum.value();
   return std::isfinite(count) && std::isfinite(variance);
 }
 
@@ -565,6 +601,21 @@ CountProfile profile_count_tilt(const VectorXd& linear_predictor,
         candidate >= upper) {
       candidate = lower + 0.5 * (upper - lower);
     }
+    // Do not repeatedly rescan cells when no representable update remains.
+    // The unchanged residual gate below still decides whether this is valid.
+    if (candidate == gamma || candidate <= lower || candidate >= upper) {
+      ++counters.count_stagnations;
+      const bool use_lower = std::abs(lower_count - target) <
+                             std::abs(upper_count - target);
+      const double best_count = use_lower ? lower_count : upper_count;
+      if (std::abs(best_count - target) < std::abs(count - target)) {
+        gamma = use_lower ? lower : upper;
+        if (!count_at_gamma(linear_predictor, gamma, count, S0, counters)) {
+          return out;
+        }
+      }
+      break;
+    }
     gamma = candidate;
     if (!count_at_gamma(linear_predictor, gamma, count, S0, counters)) {
       return out;
@@ -644,8 +695,8 @@ Evaluation evaluate_rpt_exact(const InfoCache& cache,
   out.moment.setZero(d);
   out.Sg.setZero(d);
   out.Sgg.setZero(d, d);
-  long double count_sum = 0.0L;
-  long double variance_sum = 0.0L;
+  CountSum count_sum;
+  CountSum variance_sum;
   double count_third_absolute_moment = 0.0;
   for (int i = 0; i < cache.n; ++i) {
     if ((i & 8191) == 0) Rcpp::checkUserInterrupt();
@@ -653,8 +704,8 @@ Evaluation evaluate_rpt_exact(const InfoCache& cache,
         linear_predictor[i] + profile.gamma);
     if (!std::isfinite(probability)) return out;
     const double h = probability * (1.0 - probability);
-    count_sum += static_cast<long double>(probability);
-    variance_sum += static_cast<long double>(h);
+    count_sum.add(probability);
+    variance_sum.add(h);
     count_third_absolute_moment +=
         h * ((1.0 - probability) * (1.0 - probability) +
              probability * probability);
@@ -668,8 +719,8 @@ Evaluation evaluate_rpt_exact(const InfoCache& cache,
       }
     }
   }
-  out.tilted_count = static_cast<double>(count_sum);
-  out.S0 = static_cast<double>(variance_sum);
+  out.tilted_count = count_sum.value();
+  out.S0 = variance_sum.value();
   symmetrize_lower(out.Sgg);
 
   if (!out.moment.allFinite() || !out.Sg.allFinite() ||
@@ -757,18 +808,21 @@ bool compressed_count_at_gamma(const InfoCache& cache,
                            zero_count, zero_variance)) {
     return false;
   }
-  long double count_sum = static_cast<long double>(zero_count);
-  long double variance_sum = static_cast<long double>(zero_variance);
+  CountSum count_sum;
+  CountSum variance_sum;
+  count_sum.add(zero_count);
+  variance_sum.add(zero_variance);
   for (Eigen::Index k = 0; k < exception_linear.size(); ++k) {
+    if ((k & 8191) == 0) Rcpp::checkUserInterrupt();
     const double probability = expit_stable(
         cache.base_offset + gamma + exception_linear[k]);
     if (!std::isfinite(probability)) return false;
     const double h = probability * (1.0 - probability);
-    count_sum += static_cast<long double>(probability);
-    variance_sum += static_cast<long double>(h);
+    count_sum.add(probability);
+    variance_sum.add(h);
   }
-  count = static_cast<double>(count_sum);
-  variance = static_cast<double>(variance_sum);
+  count = count_sum.value();
+  variance = variance_sum.value();
   return std::isfinite(count) && std::isfinite(variance) && variance > 0.0;
 }
 
@@ -865,6 +919,21 @@ CountProfile profile_count_tilt_compressed(
         candidate >= upper) {
       candidate = lower + 0.5 * (upper - lower);
     }
+    if (candidate == gamma || candidate <= lower || candidate >= upper) {
+      ++counters.compressed_count_stagnations;
+      const bool use_lower = std::abs(lower_count - target) <
+                             std::abs(upper_count - target);
+      const double best_count = use_lower ? lower_count : upper_count;
+      if (std::abs(best_count - target) < std::abs(count - target)) {
+        gamma = use_lower ? lower : upper;
+        if (!compressed_count_at_gamma(cache, synopsis, contractions,
+                                       exception_linear, gamma, count, S0,
+                                       counters)) {
+          return out;
+        }
+      }
+      break;
+    }
     gamma = candidate;
     if (!compressed_count_at_gamma(cache, synopsis, contractions,
                                    exception_linear, gamma, count, S0,
@@ -942,8 +1011,10 @@ Evaluation evaluate_rpt_compressed(const InfoCache& cache,
 
   out.gamma = accepted_profile.gamma;
   out.gamma_iterations = accepted_profile.iterations;
-  out.tilted_count = zero.count;
-  out.S0 = zero.S0;
+  CountSum count_sum;
+  CountSum variance_sum;
+  count_sum.add(zero.count);
+  variance_sum.add(zero.S0);
   out.moment.setZero(d);
   out.Sg.setZero(d);
   out.Sgg.setZero(d, d);
@@ -966,14 +1037,15 @@ Evaluation evaluate_rpt_compressed(const InfoCache& cache,
 
   for (std::size_t position = 0;
        position < synopsis.exceptions.size(); ++position) {
+    if ((position & 8191) == 0) Rcpp::checkUserInterrupt();
     const int i = synopsis.exceptions[position];
     const double probability = expit_stable(
         cache.base_offset + accepted_profile.gamma +
         workspace.exception_linear[static_cast<Eigen::Index>(position)]);
     if (!std::isfinite(probability)) return out;
     const double h = probability * (1.0 - probability);
-    out.tilted_count += probability;
-    out.S0 += h;
+    count_sum.add(probability);
+    variance_sum.add(h);
     const double* g = cache.G.data() + i;
     for (int j = 0; j < d; ++j) {
       const double gj = g[j * cache.n];
@@ -984,6 +1056,8 @@ Evaluation evaluate_rpt_compressed(const InfoCache& cache,
       }
     }
   }
+  out.tilted_count = count_sum.value();
+  out.S0 = variance_sum.value();
   ++counters.compressed_exception_passes;
   symmetrize_lower(out.Sgg);
 
@@ -1448,13 +1522,16 @@ Rcpp::List finalize_rpt(const InfoCache& cache,
 Rcpp::List add_acceleration_diagnostics(Rcpp::List out,
                                         const SolverCounters& counters) {
   out["path"] = "full_exact_conditional_prepared";
+  out["analytic_center_evaluations"] = counters.analytic_center_evaluations;
   out["exact_evaluations"] = counters.exact_evaluations;
   out["count_passes"] = counters.count_passes;
+  out["count_stagnations"] = counters.count_stagnations;
   out["gamma_iterations_total"] = counters.gamma_iterations;
   out["gamma_warm_starts"] = counters.gamma_warm_starts;
   out["gamma_cold_retries"] = counters.gamma_cold_retries;
   out["compressed_evaluations"] = counters.compressed_evaluations;
   out["compressed_count_passes"] = counters.compressed_count_passes;
+  out["compressed_count_stagnations"] = counters.compressed_count_stagnations;
   out["compressed_exception_passes"] =
       counters.compressed_exception_passes;
   out["compressed_gamma_iterations_total"] =
@@ -1532,6 +1609,13 @@ Rcpp::List add_moment_diagnostics(Rcpp::List out,
   return out;
 }
 
+void cache_compensated_add(const double value, double& sum, double& correction) {
+  const double next = sum + value;
+  correction += std::abs(sum) >= std::abs(value)
+      ? (sum - next) + value : (value - next) + sum;
+  sum = next;
+}
+
 InfoCache build_cache(const Rcpp::NumericVector& a,
                       const Rcpp::NumericVector& w,
                       const Rcpp::NumericMatrix& Z,
@@ -1571,6 +1655,13 @@ InfoCache build_cache(const Rcpp::NumericVector& a,
                                (1.0 - cache.base_probability));
   cache.G.setZero(n, p + 1);
   cache.weights.resize(n);
+  cache.positive_feature_sums = VectorXd::Zero(cache.d);
+  cache.positive_feature_centered_crossproducts = MatrixXd::Zero(cache.d, cache.d);
+  VectorXd sum_correction = VectorXd::Zero(cache.d);
+  VectorXd feature_anchor = VectorXd::Zero(cache.d);
+  VectorXd shifted_sum = VectorXd::Zero(cache.d);
+  VectorXd shifted_correction = VectorXd::Zero(cache.d);
+  VectorXd positive_features(cache.d);
   MatrixXd C = MatrixXd::Zero(p, p);
   VectorXd weighted_z = VectorXd::Zero(p);
 
@@ -1581,6 +1672,7 @@ InfoCache build_cache(const Rcpp::NumericVector& a,
       Rcpp::stop("w must be positive and finite");
     }
     cache.G(i, 0) = static_cast<double>(score_sign) * a[i];
+    positive_features[0] = a[i];
     for (int j = 0; j < p; ++j) {
       if (!std::isfinite(Z(i, j))) Rcpp::stop("Z must be finite");
       weighted_z[j] = w[i] * Z(i, j);
@@ -1588,6 +1680,14 @@ InfoCache build_cache(const Rcpp::NumericVector& a,
         Rcpp::stop("w multiplied by Z must be finite");
       }
       cache.G(i, j + 1) = weighted_z[j];
+      positive_features[j + 1] = weighted_z[j];
+    }
+    if (i == 0) feature_anchor = positive_features;
+    for (int j = 0; j < cache.d; ++j) {
+      cache_compensated_add(positive_features[j],
+          cache.positive_feature_sums[j], sum_correction[j]);
+      cache_compensated_add(positive_features[j] - feature_anchor[j],
+          shifted_sum[j], shifted_correction[j]);
     }
     for (int j = 0; j < p; ++j) {
       for (int k = 0; k <= j; ++k) {
@@ -1601,6 +1701,52 @@ InfoCache build_cache(const Rcpp::NumericVector& a,
   }
   if (require_supported_geometry && !cache.leading_intercept) {
     Rcpp::stop("the first column of Z must be an intercept");
+  }
+
+  cache.positive_feature_sums += sum_correction;
+  const VectorXd mean_shift =
+      (shifted_sum + shifted_correction) / static_cast<double>(n);
+  if (!cache.positive_feature_sums.allFinite() || !mean_shift.allFinite()) {
+    Rcpp::stop("response null moments must be finite");
+  }
+  // Keep the mean split so centering retains small variation on large offsets.
+  // The bounded workspace lets Eigen form crossproducts without per-cell
+  // compensated rank updates or another full response-sized allocation.
+  const int block_rows = std::max(1, std::min(2048, 65536 / cache.d));
+  MatrixXd centered_block(block_rows, cache.d);
+  MatrixXd block_crossproducts(cache.d, cache.d);
+  MatrixXd centered_correction = MatrixXd::Zero(cache.d, cache.d);
+  for (int start = 0; start < n;) {
+    Rcpp::checkUserInterrupt();
+    const int count = std::min(block_rows, n - start);
+    auto block = centered_block.topRows(count);
+    for (int j = 0; j < cache.d; ++j) {
+      block.col(j) = cache.G.col(j).segment(start, count);
+      if (j == 0 && score_sign == -1) block.col(j) *= -1.0;
+      block.col(j).array() -= feature_anchor[j];
+      block.col(j).array() -= mean_shift[j];
+    }
+    block_crossproducts.setZero();
+    block_crossproducts.selfadjointView<Eigen::Lower>().rankUpdate(block.transpose());
+    for (int j = 0; j < cache.d; ++j) {
+      for (int k = 0; k <= j; ++k) {
+        cache_compensated_add(block_crossproducts(j, k),
+            cache.positive_feature_centered_crossproducts(j, k),
+            centered_correction(j, k));
+      }
+    }
+    start += count;
+  }
+  cache.positive_feature_centered_crossproducts += centered_correction;
+  symmetrize_lower(cache.positive_feature_centered_crossproducts);
+  cache.positive_feature_crossproducts =
+      cache.positive_feature_centered_crossproducts +
+      cache.positive_feature_sums * cache.positive_feature_sums.transpose() /
+          static_cast<double>(n);
+  if (!cache.positive_feature_sums.allFinite() ||
+      !cache.positive_feature_centered_crossproducts.allFinite() ||
+      !cache.positive_feature_crossproducts.allFinite()) {
+    Rcpp::stop("response null moments must be finite");
   }
 
   symmetrize_lower(C);
@@ -1676,6 +1822,54 @@ void configure_prepared_pair(PreparedMomentContext& context,
                                (1.0 - cache.base_probability));
 }
 
+Evaluation evaluate_rpt_null(const InfoCache& cache, const double target,
+                             SolverCounters& counters) {
+  ++counters.analytic_center_evaluations;
+  Evaluation out;
+  const double probability = cache.base_probability;
+  const double h = probability * (1.0 - probability);
+  if (!std::isfinite(target) || !std::isfinite(h) || h <= 0.0) return out;
+
+  out.gamma = 0.0;
+  out.tilted_count = static_cast<double>(cache.m);
+  out.S0 = static_cast<double>(cache.n) * h;
+  out.moment = probability * cache.positive_feature_sums;
+  out.Sg = h * cache.positive_feature_sums;
+  out.Sgg = h * cache.positive_feature_crossproducts;
+  // This is the profiled Bernoulli CGF curvature, without an N/(N-1) factor.
+  out.conditional_information = h * cache.positive_feature_centered_crossproducts;
+  if (cache.score_sign == -1) {
+    out.moment[0] *= -1.0;
+    out.Sg[0] *= -1.0;
+    out.Sgg.row(0) *= -1.0;
+    out.Sgg.col(0) *= -1.0;
+    out.conditional_information.row(0) *= -1.0;
+    out.conditional_information.col(0) *= -1.0;
+  }
+  out.count_variance_ratio = out.S0 / cache.base_count_variance;
+  out.count_berry_esseen_ratio =
+      ((1.0 - probability) * (1.0 - probability) + probability * probability) /
+      std::sqrt(out.S0);
+  if (!out.moment.allFinite() || !out.Sg.allFinite() || !out.Sgg.allFinite() ||
+      !out.conditional_information.allFinite() || !std::isfinite(out.S0) ||
+      out.S0 <= 0.0 || !std::isfinite(out.count_variance_ratio) ||
+      !std::isfinite(out.count_berry_esseen_ratio)) {
+    return out;
+  }
+
+  out.boundary = boundary_terms(out.moment, cache.C_inv);
+  if (!out.boundary.valid) return out;
+  out.residual = VectorXd::Zero(cache.d + 1);
+  out.residual[cache.d] = out.boundary.b - target;
+  out.jacobian = MatrixXd::Zero(cache.d + 1, cache.d + 1);
+  out.jacobian.topLeftCorner(cache.d, cache.d).setIdentity();
+  out.jacobian.block(0, cache.d, cache.d, 1) = -out.boundary.grad;
+  out.jacobian.block(cache.d, 0, 1, cache.d) =
+      (out.conditional_information * out.boundary.grad).transpose();
+  out.valid = out.residual.allFinite() && out.jacobian.allFinite();
+  return out;
+}
+
 Rcpp::List run_rpt_full(const InfoCache& cache,
                         const double target,
                         const double tolerance,
@@ -1687,8 +1881,7 @@ Rcpp::List run_rpt_full(const InfoCache& cache,
   VectorXd x = VectorXd::Zero(cache.d + 1);
   const std::vector<double> empty_history;
   Evaluation base = supplied_base == nullptr
-                        ? evaluate_rpt_exact(
-                              cache, x, target, kNaN, workspace, counters)
+                        ? evaluate_rpt_null(cache, target, counters)
                         : *supplied_base;
   if (!base.valid) {
     return add_acceleration_diagnostics(
@@ -1858,26 +2051,21 @@ Rcpp::List run_rpt_moment(const InfoCache& cache,
     return exact_fallback("invalid_moment_synopsis", nullptr);
   }
 
-  // At theta = 0 every omitted Taylor term is exactly zero, so the synopsis
-  // center is algebraically exact while touching only nonzero exceptions.
-
-  Evaluation synopsis_base = evaluate_rpt_compressed(
-      cache, *synopsis, zero_state, target, 0.0, delta_limit,
-      compressed_workspace, counters);
-
-  if (!synopsis_base.valid) {
-    return exact_fallback("invalid_synopsis_center", nullptr);
+  // Zero tilt uses the cached full-CGF null moments for either solve path.
+  const Evaluation null_base = evaluate_rpt_null(cache, target, counters);
+  if (!null_base.valid) {
+    return exact_fallback("invalid_analytic_center", nullptr);
   }
-  const double center = synopsis_base.boundary.b;
+  const double center = null_base.boundary.b;
 
   CompressedSolve compressed = run_rpt_compressed(
       cache, *synopsis, target, compressed_tolerance, max_iterations,
-      delta_limit, synopsis_base, compressed_workspace, counters);
+      delta_limit, null_base, compressed_workspace, counters);
 
   diagnostics.compressed_updates = compressed.updates;
   diagnostics.maximum_locality_bound = compressed.maximum_locality_bound;
   if (!compressed.converged) {
-    return exact_fallback(compressed.reason, nullptr);
+    return exact_fallback(compressed.reason, &null_base);
   }
 
   VectorXd exact_state = compressed.state;
@@ -1887,7 +2075,7 @@ Rcpp::List run_rpt_moment(const InfoCache& cache,
       exact_workspace, counters);
 
   if (!exact_current.valid) {
-    return exact_fallback("invalid_exact_audit", nullptr);
+    return exact_fallback("invalid_exact_audit", &null_base);
   }
 
   std::vector<double> history = compressed.history;
@@ -1899,7 +2087,7 @@ Rcpp::List run_rpt_moment(const InfoCache& cache,
       diagnostics.exact_polish_updates);
 
   if (!exact_converged) {
-    return exact_fallback("exact_polish_failed", nullptr);
+    return exact_fallback("exact_polish_failed", &null_base);
   }
 
   diagnostics.exact_audit_passed = true;
@@ -1946,6 +2134,11 @@ PreparedMomentContext* checked_prepared_context(SEXP pointer,
       cache.G.rows() != cache.n || cache.G.cols() != cache.d ||
       cache.weights.size() != cache.n ||
       cache.C_inv.rows() != cache.p || cache.C_inv.cols() != cache.p ||
+      cache.positive_feature_sums.size() != cache.d ||
+      cache.positive_feature_crossproducts.rows() != cache.d ||
+      cache.positive_feature_crossproducts.cols() != cache.d ||
+      cache.positive_feature_centered_crossproducts.rows() != cache.d ||
+      cache.positive_feature_centered_crossproducts.cols() != cache.d ||
       context->positive_feature_sums.size() != cache.d ||
       context->n_zero < 0 || context->n_zero > cache.n ||
       (context->eligible && (!context->synopsis.valid ||
@@ -1999,7 +2192,7 @@ SEXP prepare_rpt_spa_response(
   std::unique_ptr<PreparedMomentContext> context(new PreparedMomentContext());
   context->cache = build_cache(a, w, Z, 1, 1);
   context->maximum_moment_degree = maximum_moment_degree;
-  context->positive_feature_sums = context->cache.G.colwise().sum().transpose();
+  context->positive_feature_sums = context->cache.positive_feature_sums;
   if (!context->positive_feature_sums.allFinite()) {
     Rcpp::stop("response feature sums must be finite");
   }
@@ -2220,6 +2413,39 @@ void release_rpt_spa_response_cpp(SEXP prepared_context) {
   sceptre::release_rpt_spa_response(prepared_context);
 }
 
+// Internal diagnostic surface for checking the cached zero-tilt identities.
+// [[Rcpp::export]]
+Rcpp::List rpt_spa_moment_null_evaluation_cpp(
+    SEXP prepared_context, const int m, const int score_sign = 1,
+    const double target = 0.0) {
+  if (!std::isfinite(target)) Rcpp::stop("target must be finite");
+  PreparedMomentContext* context = checked_prepared_context(prepared_context);
+  configure_prepared_pair(*context, m, score_sign);
+  SolverCounters counters;
+  const Evaluation out = evaluate_rpt_null(context->cache, target, counters);
+  return Rcpp::List::create(
+      Rcpp::Named("valid") = out.valid,
+      Rcpp::Named("moment") = Rcpp::wrap(out.moment),
+      Rcpp::Named("S0") = out.S0,
+      Rcpp::Named("Sg") = Rcpp::wrap(out.Sg),
+      Rcpp::Named("Sgg") = Rcpp::wrap(out.Sgg),
+      Rcpp::Named("conditional_information") = Rcpp::wrap(out.conditional_information),
+      Rcpp::Named("gamma") = out.gamma,
+      Rcpp::Named("count_tilt") = out.gamma,
+      Rcpp::Named("tilted_count") = out.tilted_count,
+      Rcpp::Named("count_residual") = out.tilted_count - m,
+      Rcpp::Named("count_variance_ratio") = out.count_variance_ratio,
+      Rcpp::Named("count_berry_esseen_ratio") = out.count_berry_esseen_ratio,
+      Rcpp::Named("center") = out.boundary.b,
+      Rcpp::Named("boundary_grad") = Rcpp::wrap(out.boundary.grad),
+      Rcpp::Named("boundary_hess") = Rcpp::wrap(out.boundary.hess),
+      Rcpp::Named("residual") = Rcpp::wrap(out.residual),
+      Rcpp::Named("jacobian") = Rcpp::wrap(out.jacobian),
+      Rcpp::Named("analytic_center_evaluations") = counters.analytic_center_evaluations,
+      Rcpp::Named("count_passes") = counters.count_passes,
+      Rcpp::Named("gamma_iterations_total") = counters.gamma_iterations);
+}
+
 // [[Rcpp::export]]
 Rcpp::List rpt_spa_moment_prepared_cpp(
     SEXP prepared_context, const int m, const double target,
@@ -2241,4 +2467,36 @@ Rcpp::List rpt_spa_moment_outward_prepared_cpp(
   return sceptre::rpt_spa_moment_outward_prepared(
       prepared_context, treated_indices, tolerance, compressed_tolerance,
       max_iterations, maximum_polish_updates, delta_limit, exact_audit_tolerance);
+}
+
+// Internal count-root diagnostic; the predictor includes its baseline offset.
+// [[Rcpp::export]]
+Rcpp::List rpt_spa_count_profile_cpp(
+    const Rcpp::NumericVector& linear_predictor,
+    const int m,
+    const double initial = NA_REAL) {
+  const R_xlen_t n = linear_predictor.size();
+  if (n < 2 || n > std::numeric_limits<int>::max()) {
+    Rcpp::stop("linear_predictor must contain between 2 and INT_MAX cells");
+  }
+  if (m <= 0 || m >= n) Rcpp::stop("m must lie strictly between zero and the number of cells");
+  if (!std::isfinite(initial) && !R_IsNA(initial)) {
+    Rcpp::stop("initial must be finite or NA");
+  }
+  const Eigen::Map<const VectorXd> predictor(linear_predictor.begin(), n);
+  if (!predictor.allFinite()) Rcpp::stop("linear_predictor must be finite");
+  SolverCounters counters;
+  const CountProfile result = profile_count_tilt(predictor, m, 0.0, initial, counters);
+  return Rcpp::List::create(
+      Rcpp::Named("valid") = result.valid,
+      Rcpp::Named("gamma") = result.gamma,
+      Rcpp::Named("count") = result.count,
+      Rcpp::Named("S0") = result.S0,
+      Rcpp::Named("iterations") = result.iterations,
+      Rcpp::Named("count_passes") = counters.count_passes,
+      Rcpp::Named("count_residual") = result.count - m,
+      Rcpp::Named("count_tolerance") = 64.0 * std::numeric_limits<double>::epsilon() * n,
+      Rcpp::Named("stagnations") = counters.count_stagnations,
+      Rcpp::Named("gamma_warm_starts") = counters.gamma_warm_starts,
+      Rcpp::Named("gamma_cold_retries") = counters.gamma_cold_retries);
 }

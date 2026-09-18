@@ -14,7 +14,7 @@ Rcpp::List crt_spa_full(const Rcpp::NumericVector& a,
                         const Rcpp::NumericVector& propensity,
                         double target,
                         int score_sign = 1,
-                        double tolerance = 1e-5,
+                        double tolerance = 1e-4,
                         int max_iterations = 50);
 
 // Full-Newton CRT-SPA with automatic outward-tail selection relative to the
@@ -26,7 +26,7 @@ Rcpp::List crt_spa_full_outward(
     const Rcpp::NumericMatrix& Z,
     const Rcpp::NumericVector& propensity,
     const Rcpp::IntegerVector& treated_indices,
-    double tolerance = 1e-5,
+    double tolerance = 1e-4,
     int max_iterations = 50);
 
 // Cached exact counterparts. Untilted moments are accumulated during cache
@@ -37,7 +37,7 @@ Rcpp::List crt_spa_full_cached(const Rcpp::NumericVector& a,
                                const Rcpp::NumericVector& propensity,
                                double target,
                                int score_sign = 1,
-                               double tolerance = 1e-5,
+                               double tolerance = 1e-4,
                                int max_iterations = 50);
 
 Rcpp::List crt_spa_full_outward_cached(
@@ -46,7 +46,7 @@ Rcpp::List crt_spa_full_outward_cached(
     const Rcpp::NumericMatrix& Z,
     const Rcpp::NumericVector& propensity,
     const Rcpp::IntegerVector& treated_indices,
-    double tolerance = 1e-5,
+    double tolerance = 1e-4,
     int max_iterations = 50);
 
 }  // namespace sceptre

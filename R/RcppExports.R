@@ -21,31 +21,31 @@ estimate_theta <- function(y, mu, dfr, limit, eps) {
     .Call(`_sceptre_estimate_theta`, y, mu, dfr, limit, eps)
 }
 
-crt_empirical_spa_full_cpp <- function(a, propensity, target, score_sign = 1L, tolerance = 1e-5, max_iterations = 60L, max_backtracks = 24L) {
+crt_empirical_spa_full_cpp <- function(a, propensity, target, score_sign = 1L, tolerance = 1e-4, max_iterations = 60L, max_backtracks = 24L) {
     .Call(`_sceptre_crt_empirical_spa_full_cpp`, a, propensity, target, score_sign, tolerance, max_iterations, max_backtracks)
 }
 
-crt_empirical_spa_full_fast_cpp <- function(a, propensity, y, target, score_sign = 1L, tolerance = 1e-5, max_iterations = 60L, max_backtracks = 24L) {
+crt_empirical_spa_full_fast_cpp <- function(a, propensity, y, target, score_sign = 1L, tolerance = 1e-4, max_iterations = 60L, max_backtracks = 24L) {
     .Call(`_sceptre_crt_empirical_spa_full_fast_cpp`, a, propensity, y, target, score_sign, tolerance, max_iterations, max_backtracks)
 }
 
-crt_spa_full_cpp <- function(a, w, Z, propensity, target, score_sign = 1L, tolerance = 1e-5, max_iterations = 50L) {
+crt_spa_full_cpp <- function(a, w, Z, propensity, target, score_sign = 1L, tolerance = 1e-4, max_iterations = 50L) {
     .Call(`_sceptre_crt_spa_full_cpp`, a, w, Z, propensity, target, score_sign, tolerance, max_iterations)
 }
 
-crt_spa_full_cached_cpp <- function(a, w, Z, propensity, target, score_sign = 1L, tolerance = 1e-5, max_iterations = 50L) {
+crt_spa_full_cached_cpp <- function(a, w, Z, propensity, target, score_sign = 1L, tolerance = 1e-4, max_iterations = 50L) {
     .Call(`_sceptre_crt_spa_full_cached_cpp`, a, w, Z, propensity, target, score_sign, tolerance, max_iterations)
 }
 
-crt_spa_full_outward_cached_cpp <- function(a, w, Z, propensity, treated_indices, tolerance = 1e-5, max_iterations = 50L) {
+crt_spa_full_outward_cached_cpp <- function(a, w, Z, propensity, treated_indices, tolerance = 1e-4, max_iterations = 50L) {
     .Call(`_sceptre_crt_spa_full_outward_cached_cpp`, a, w, Z, propensity, treated_indices, tolerance, max_iterations)
 }
 
-crt_spa_full_fast_cpp <- function(a, w, y, Z, propensity, target, score_sign = 1L, tolerance = 1e-5, max_iterations = 50L) {
+crt_spa_full_fast_cpp <- function(a, w, y, Z, propensity, target, score_sign = 1L, tolerance = 1e-4, max_iterations = 50L) {
     .Call(`_sceptre_crt_spa_full_fast_cpp`, a, w, y, Z, propensity, target, score_sign, tolerance, max_iterations)
 }
 
-crt_spa_full_outward_fast_cpp <- function(a, w, y, Z, propensity, treated_indices, tolerance = 1e-5, max_iterations = 50L) {
+crt_spa_full_outward_fast_cpp <- function(a, w, y, Z, propensity, treated_indices, tolerance = 1e-4, max_iterations = 50L) {
     .Call(`_sceptre_crt_spa_full_outward_fast_cpp`, a, w, y, Z, propensity, treated_indices, tolerance, max_iterations)
 }
 
@@ -170,7 +170,7 @@ compute_nt_nonzero_matrix_and_n_ok_pairs_v3 <- function(j, p, n_cells_orig, n_ce
     .Call(`_sceptre_compute_nt_nonzero_matrix_and_n_ok_pairs_v3`, j, p, n_cells_orig, n_cells_sub, grna_group_idxs, indiv_nt_grna_idxs, all_nt_idxs, to_analyze_response_idxs, to_analyze_grna_idxs, control_group_complement, cells_in_use)
 }
 
-rpt_spa_full_cpp <- function(a, w, Z, m, target, score_sign = 1L, tolerance = 1e-5, max_iterations = 50L) {
+rpt_spa_full_cpp <- function(a, w, Z, m, target, score_sign = 1L, tolerance = 1e-4, max_iterations = 50L) {
     .Call(`_sceptre_rpt_spa_full_cpp`, a, w, Z, m, target, score_sign, tolerance, max_iterations)
 }
 
@@ -182,12 +182,20 @@ release_rpt_spa_response_cpp <- function(prepared_context) {
     invisible(.Call(`_sceptre_release_rpt_spa_response_cpp`, prepared_context))
 }
 
+rpt_spa_moment_null_evaluation_cpp <- function(prepared_context, m, score_sign = 1L, target = 0.0) {
+    .Call(`_sceptre_rpt_spa_moment_null_evaluation_cpp`, prepared_context, m, score_sign, target)
+}
+
 rpt_spa_moment_prepared_cpp <- function(prepared_context, m, target, score_sign = 1L, tolerance = 1e-4, compressed_tolerance = 1e-4, max_iterations = 50L, maximum_polish_updates = 3L, delta_limit = 0.06, exact_audit_tolerance = 1e-4) {
     .Call(`_sceptre_rpt_spa_moment_prepared_cpp`, prepared_context, m, target, score_sign, tolerance, compressed_tolerance, max_iterations, maximum_polish_updates, delta_limit, exact_audit_tolerance)
 }
 
 rpt_spa_moment_outward_prepared_cpp <- function(prepared_context, treated_indices, tolerance = 1e-4, compressed_tolerance = 1e-4, max_iterations = 50L, maximum_polish_updates = 3L, delta_limit = 0.06, exact_audit_tolerance = 1e-4) {
     .Call(`_sceptre_rpt_spa_moment_outward_prepared_cpp`, prepared_context, treated_indices, tolerance, compressed_tolerance, max_iterations, maximum_polish_updates, delta_limit, exact_audit_tolerance)
+}
+
+rpt_spa_count_profile_cpp <- function(linear_predictor, m, initial = NA_real_) {
+    .Call(`_sceptre_rpt_spa_count_profile_cpp`, linear_predictor, m, initial)
 }
 
 compute_empirical_p_value <- function(null_statistics, z_orig, side) {

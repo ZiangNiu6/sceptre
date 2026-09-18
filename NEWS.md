@@ -1,5 +1,13 @@
 # sceptre development version
 
+- Unified the default Newton root tolerance at `1e-4` across all CRT and RPT
+  SPA modes, including screened and always variants, cached-exact and
+  partial-normal solvers, and moment initialization, exact audit/polishing,
+  and exact-solver fallback. Direct solver defaults match the analysis routes.
+  Fixed-count inner-root precision, matrix checks, and approximation safety
+  guards remain unchanged. This is a solver-residual threshold, not a bound
+  on p-value error; stricter tolerances remain available in direct solver calls.
+
 - Added opt-in `"rpt_spa_fast"` and `"rpt_spa_always_fast"` permutation-test
   modes. They lazily prepare and reuse response geometry and second-order
   zero-response moments across targets sharing the same response fit and cell
@@ -13,6 +21,14 @@
   outputs report acceleration paths, preparation failures, moment eligibility,
   and tolerances. This is an experimental numerical acceleration, not a
   guarantee of faster execution or statistically exact p-values.
+
+- The accelerated RPT modes now cache full zero-tilt response moments and
+  construct their null initialization analytically, including the fixed-count
+  conditional curvature. Compensated count and count-variance sums avoid
+  platform-dependent accumulation error, and count roots stop when no
+  representable update remains. The existing count-residual acceptance gate,
+  exact audit, and fallback rules are retained; the original RPT modes are
+  unchanged.
 
 - The information-studentized CRT options `"crt_spa_fast"` and
   `"crt_spa_always_fast"` now use cached exact Bernoulli CGF evaluation instead

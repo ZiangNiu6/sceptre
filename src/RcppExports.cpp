@@ -696,6 +696,20 @@ BEGIN_RCPP
     return R_NilValue;
 END_RCPP
 }
+// rpt_spa_moment_null_evaluation_cpp
+Rcpp::List rpt_spa_moment_null_evaluation_cpp(SEXP prepared_context, const int m, const int score_sign, const double target);
+RcppExport SEXP _sceptre_rpt_spa_moment_null_evaluation_cpp(SEXP prepared_contextSEXP, SEXP mSEXP, SEXP score_signSEXP, SEXP targetSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type prepared_context(prepared_contextSEXP);
+    Rcpp::traits::input_parameter< const int >::type m(mSEXP);
+    Rcpp::traits::input_parameter< const int >::type score_sign(score_signSEXP);
+    Rcpp::traits::input_parameter< const double >::type target(targetSEXP);
+    rcpp_result_gen = Rcpp::wrap(rpt_spa_moment_null_evaluation_cpp(prepared_context, m, score_sign, target));
+    return rcpp_result_gen;
+END_RCPP
+}
 // rpt_spa_moment_prepared_cpp
 Rcpp::List rpt_spa_moment_prepared_cpp(SEXP prepared_context, const int m, const double target, const int score_sign, const double tolerance, const double compressed_tolerance, const int max_iterations, const int maximum_polish_updates, const double delta_limit, const double exact_audit_tolerance);
 RcppExport SEXP _sceptre_rpt_spa_moment_prepared_cpp(SEXP prepared_contextSEXP, SEXP mSEXP, SEXP targetSEXP, SEXP score_signSEXP, SEXP toleranceSEXP, SEXP compressed_toleranceSEXP, SEXP max_iterationsSEXP, SEXP maximum_polish_updatesSEXP, SEXP delta_limitSEXP, SEXP exact_audit_toleranceSEXP) {
@@ -731,6 +745,19 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< const double >::type delta_limit(delta_limitSEXP);
     Rcpp::traits::input_parameter< const double >::type exact_audit_tolerance(exact_audit_toleranceSEXP);
     rcpp_result_gen = Rcpp::wrap(rpt_spa_moment_outward_prepared_cpp(prepared_context, treated_indices, tolerance, compressed_tolerance, max_iterations, maximum_polish_updates, delta_limit, exact_audit_tolerance));
+    return rcpp_result_gen;
+END_RCPP
+}
+// rpt_spa_count_profile_cpp
+Rcpp::List rpt_spa_count_profile_cpp(const Rcpp::NumericVector& linear_predictor, const int m, const double initial);
+RcppExport SEXP _sceptre_rpt_spa_count_profile_cpp(SEXP linear_predictorSEXP, SEXP mSEXP, SEXP initialSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const Rcpp::NumericVector& >::type linear_predictor(linear_predictorSEXP);
+    Rcpp::traits::input_parameter< const int >::type m(mSEXP);
+    Rcpp::traits::input_parameter< const double >::type initial(initialSEXP);
+    rcpp_result_gen = Rcpp::wrap(rpt_spa_count_profile_cpp(linear_predictor, m, initial));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -927,8 +954,10 @@ static const R_CallMethodDef CallEntries[] = {
     {"_sceptre_rpt_spa_full_cpp", (DL_FUNC) &_sceptre_rpt_spa_full_cpp, 8},
     {"_sceptre_prepare_rpt_spa_response_cpp", (DL_FUNC) &_sceptre_prepare_rpt_spa_response_cpp, 6},
     {"_sceptre_release_rpt_spa_response_cpp", (DL_FUNC) &_sceptre_release_rpt_spa_response_cpp, 1},
+    {"_sceptre_rpt_spa_moment_null_evaluation_cpp", (DL_FUNC) &_sceptre_rpt_spa_moment_null_evaluation_cpp, 4},
     {"_sceptre_rpt_spa_moment_prepared_cpp", (DL_FUNC) &_sceptre_rpt_spa_moment_prepared_cpp, 10},
     {"_sceptre_rpt_spa_moment_outward_prepared_cpp", (DL_FUNC) &_sceptre_rpt_spa_moment_outward_prepared_cpp, 8},
+    {"_sceptre_rpt_spa_count_profile_cpp", (DL_FUNC) &_sceptre_rpt_spa_count_profile_cpp, 3},
     {"_sceptre_compute_empirical_p_value", (DL_FUNC) &_sceptre_compute_empirical_p_value, 3},
     {"_sceptre_fit_skew_normal_funct", (DL_FUNC) &_sceptre_fit_skew_normal_funct, 1},
     {"_sceptre_check_sn_tail", (DL_FUNC) &_sceptre_check_sn_tail, 4},

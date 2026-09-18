@@ -16,7 +16,7 @@ Rcpp::List crt_spa_full_fast(const Rcpp::NumericVector& a,
                              const Rcpp::NumericVector& propensity,
                              double target,
                              int score_sign = 1,
-                             double tolerance = 1e-5,
+                             double tolerance = 1e-4,
                              int max_iterations = 50);
 
 // Outward-tail wrapper matching crt_spa_full_outward, but using the
@@ -28,7 +28,7 @@ Rcpp::List crt_spa_full_outward_fast(
     const Rcpp::NumericMatrix& Z,
     const Rcpp::NumericVector& propensity,
     const Rcpp::IntegerVector& treated_indices,
-    double tolerance = 1e-5,
+    double tolerance = 1e-4,
     int max_iterations = 50);
 
 }  // namespace sceptre

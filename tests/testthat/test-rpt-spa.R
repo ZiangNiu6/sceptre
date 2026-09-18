@@ -208,7 +208,7 @@ test_that("RPT Full Newton enforces the count constraint and returns a probabili
   expect_true(is.finite(result$p_value))
   expect_gte(result$p_value, 0)
   expect_lte(result$p_value, 1)
-  expect_lte(result$max_residual, 1e-5)
+  expect_lte(result$max_residual, 1e-4)
 
   # The implementation profiles the count tilt and uses the intercept entry
   # of w * Z for q, avoiding a duplicate moment coordinate.

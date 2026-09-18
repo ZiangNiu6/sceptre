@@ -14,7 +14,7 @@ Rcpp::List crt_empirical_spa_full_fast(
     const Rcpp::NumericVector& y,
     double target,
     int score_sign = 1,
-    double tolerance = 1e-5,
+    double tolerance = 1e-4,
     int max_iterations = 60,
     int max_backtracks = 24);
 

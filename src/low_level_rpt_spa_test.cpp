@@ -36,7 +36,7 @@ namespace {
 
 constexpr double kTailTrigger = 0.02;
 constexpr double kMinimumPValue = 1.0e-250;
-constexpr double kSpaRootTolerance = 1.0e-5;
+constexpr double kSpaRootTolerance = 1.0e-4;
 constexpr double kMomentRootTolerance = 1.0e-4;
 constexpr const char* kStatisticId = "information_studentized_rpt_v1";
 constexpr const char* kEquationId = "rpt_information_conditional_kkt_v1";

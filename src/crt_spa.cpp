@@ -920,7 +920,7 @@ Rcpp::List crt_spa_full_cpp(const Rcpp::NumericVector& a,
                             const Rcpp::NumericVector& propensity,
                             const double target,
                             const int score_sign = 1,
-                            const double tolerance = 1e-5,
+                            const double tolerance = 1e-4,
                             const int max_iterations = 50) {
   return sceptre::crt_spa_full(a, w, Z, propensity, target, score_sign,
                                tolerance, max_iterations);
@@ -933,7 +933,7 @@ Rcpp::List crt_spa_full_cached_cpp(const Rcpp::NumericVector& a,
                                     const Rcpp::NumericVector& propensity,
                                     const double target,
                                     const int score_sign = 1,
-                                    const double tolerance = 1e-5,
+                                    const double tolerance = 1e-4,
                                     const int max_iterations = 50) {
   return sceptre::crt_spa_full_cached(
       a, w, Z, propensity, target, score_sign, tolerance, max_iterations);
@@ -946,7 +946,7 @@ Rcpp::List crt_spa_full_outward_cached_cpp(
     const Rcpp::NumericMatrix& Z,
     const Rcpp::NumericVector& propensity,
     const Rcpp::IntegerVector& treated_indices,
-    const double tolerance = 1e-5,
+    const double tolerance = 1e-4,
     const int max_iterations = 50) {
   return sceptre::crt_spa_full_outward_cached(
       a, w, Z, propensity, treated_indices, tolerance, max_iterations);
