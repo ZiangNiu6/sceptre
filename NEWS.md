@@ -1,5 +1,40 @@
 # sceptre development version
 
+- Optimized the prepared `crt_spa_always_fast` path for six-column designs
+  (including the intercept)
+  with a fixed seven-moment kernel and a stable KL calculation that skips an
+  overwritten exponential. Accepted evaluations retain their exact cell tilts
+  for final-rate reuse only when dimensions and theta bytes match. Other
+  dimensions retain the generic evaluator. Exact CGF formulas, accumulation
+  order, convergence controls and empirical fallback rules are preserved.
+  These changes use the existing shared-preparation option; no bounded
+  gene-vector cache was added after the cohort's access-trace assessment.
+
+- Added experimental run-local shared preparation for `crt_spa_always_fast`,
+  enabled with `options(sceptre.crt_spa_shared_preparation = TRUE)`. Target
+  propensity transformations are reused across genes, and small gene
+  information inverses are prepared once in parallel. Pair-specific moments,
+  exact CGF evaluation, solver controls, and fallback behavior are retained.
+  The option defaults to `FALSE`; phase diagnostics include preparation costs
+  and counts. Persistent response caches do not retain these preparations.
+  The prepared native path borrows read-only target arrays and gene weights
+  with their R owners retained for the call, avoiding three full-length
+  vector copies and a redundant feature-matrix zero-fill per pair.
+
+- Added opt-in `response_fit_method = "pysceptre"`: native indicator-aware
+  Poisson IRLS inspired by Broad Institute pysceptre, followed by the existing
+  SCEPTRE negative-binomial size estimator and clamp. Designs are prepared once
+  per fitting population and genes are fitted independently in bounded chunks.
+  The original `"sceptre"` default and full `"glmGamPoi"` fit remain available.
+  Unsafe optimized fits fall back to `stats::glm.fit()` with diagnostics.
+
+- Added the independent `grna_fit_method = "pysceptre"` option for native
+  indicator-aware binomial-logit fitting in CRT analyses. It can be combined
+  with either SCEPTRE response backend or `"glmGamPoi"`. Shared designs and
+  target-specific treatment-plus-NT designs retain their own cell scopes.
+  `get_grna_fit_diagnostics()` reports successful structured fits and native
+  fallbacks; phase timings count both optimized gRNA backends separately.
+
 - Unified the default Newton root tolerance at `1e-4` across all CRT and RPT
   SPA modes, including screened and always variants, cached-exact and
   partial-normal solvers, and moment initialization, exact audit/polishing,

@@ -5,22 +5,30 @@
 #' The `"sceptre"` method fits a Poisson regression and estimates the
 #' negative-binomial size parameter conditional on its fitted means. The
 #' `"glmGamPoi"` method uses `glmGamPoi::glm_gp()` to fit the regression
-#' coefficients and dispersion. Both methods return the same cached nuisance
+#' coefficients and dispersion. The `"pysceptre"` method uses an optimized
+#' Poisson solver with the existing SCEPTRE size-parameter estimator.
+#' All methods return the same cached nuisance
 #' parameter interface used by the downstream SCEPTRE association tests; they
 #' do not change the CRT, SPA, or other resampling procedures.
 #'
 #' @param expressions the numeric vector of response expressions
 #' @param covariate_matrix the covariate matrix on which to regress the expressions (NOTE: the matrix should contain an intercept term)
 #' @param response_fit_method the response nuisance-fitting method, either
-#' `"sceptre"` or `"glmGamPoi"`
+#' `"sceptre"`, `"glmGamPoi"`, or `"pysceptre"`
 #'
 #' @return a list containing the following elements: (i) "fitted_coefs": a vector of fitted coefficients; (ii) "theta": the fitted theta.
 #' @noRd
 perform_response_precomputation <- function(
-    expressions, covariate_matrix, response_fit_method = "sceptre") {
+    expressions, covariate_matrix, response_fit_method = "sceptre",
+    prepared_design = NULL) {
   response_fit_method <- match.arg(
-    response_fit_method, choices = c("sceptre", "glmGamPoi")
+    response_fit_method, choices = c("sceptre", "glmGamPoi", "pysceptre")
   )
+  if (identical(response_fit_method, "pysceptre")) {
+    return(perform_pysceptre_response_precomputation(
+      expressions, covariate_matrix, prepared_design = prepared_design
+    ))
+  }
   if (identical(response_fit_method, "glmGamPoi")) {
     expressions <- matrix(expressions, nrow = 1L)
     result <- perform_glmgampoi_response_precomputations(
@@ -50,6 +58,38 @@ perform_sceptre_response_precomputation <- function(expressions, covariate_matri
   theta <- max(min(response_theta_list[[1]], 1000), 0.01)
   result <- list(fitted_coefs = pois_fit$coefficients, theta = theta)
   return(result)
+}
+
+
+perform_pysceptre_response_precomputation <- function(
+    expressions, covariate_matrix, prepared_design = NULL) {
+  pois_fit <- fit_pysceptre_glm(
+    expressions = expressions, covariate_matrix = covariate_matrix,
+    family = "poisson", prepared_design = prepared_design
+  )
+  if (any(is.na(pois_fit$coefficients))) {
+    problem_covariates <- paste0(names(which(is.na(pois_fit$coefficients))))
+    stop("The coefficients corresponding to the following covariates cannot be estimated in the regression model: ",
+         paste0(problem_covariates, collapse = ", "), ". Consider removing these covariates from the model (by updating `formula_object` in `set_analysis_parameters()`).")
+  }
+  response_theta_list <- estimate_theta(
+    y = expressions, mu = pois_fit$fitted.values,
+    dfr = length(expressions) - ncol(covariate_matrix),
+    limit = 50, eps = (.Machine$double.eps)^(1 / 4)
+  )
+  coefficients <- pois_fit$coefficients
+  names(coefficients) <- colnames(covariate_matrix)
+  result <- list(
+    fitted_coefs = coefficients,
+    theta = max(min(response_theta_list[[1L]], 1000), 0.01)
+  )
+  attr(result, "fit_diagnostics") <- list(
+    method_requested = "pysceptre", method_used = pois_fit$method_used,
+    fallback_reason = pois_fit$fallback_reason,
+    converged = pois_fit$converged, iterations = pois_fit$iterations,
+    theta_method = response_theta_list[[2L]]
+  )
+  result
 }
 
 
@@ -102,7 +142,7 @@ validate_response_ids <- function(response_ids) {
 }
 
 
-plan_glmgampoi_response_fits <- function(
+plan_response_fits <- function(
     response_ids, response_precomputations, chunk_size = 16L,
     parallel = FALSE, n_processors = "auto") {
   response_ids <- validate_response_ids(response_ids)
@@ -174,6 +214,17 @@ plan_glmgampoi_response_fits <- function(
     n_chunks = length(chunks),
     n_workers = as.integer(n_workers),
     chunk_size = chunk_size
+  )
+}
+
+
+# Preserve the existing internal entry point for callers and test mocks.
+plan_glmgampoi_response_fits <- function(
+    response_ids, response_precomputations, chunk_size = 16L,
+    parallel = FALSE, n_processors = "auto") {
+  plan_response_fits(
+    response_ids, response_precomputations, chunk_size,
+    parallel, n_processors
   )
 }
 
@@ -383,18 +434,23 @@ load_response_expression_chunk <- function(
 }
 
 
-execute_glmgampoi_response_fit_plan <- function(
+execute_response_fit_plan <- function(
     plan, response_matrix, cell_indices, covariate_matrix,
-    print_progress = FALSE) {
+    print_progress = FALSE, response_fit_method = "pysceptre") {
+  response_fit_method <- match.arg(
+    response_fit_method, c("sceptre", "glmGamPoi", "pysceptre")
+  )
   if (!is.list(plan) || is.null(plan$chunks) || is.null(plan$n_workers) ||
       is.null(plan$n_chunks) || is.null(plan$missing_ids) ||
       is.null(plan$chunk_size)) {
-    stop("Invalid glmGamPoi response-fit plan.", call. = FALSE)
+    stop("Invalid ", response_fit_method, " response-fit plan.", call. = FALSE)
   }
   if (plan$n_chunks == 0L) {
     return(stats::setNames(list(), character(0L)))
   }
-  check_glmgampoi_response_fit_dependency()
+  if (identical(response_fit_method, "glmGamPoi")) {
+    check_glmgampoi_response_fit_dependency()
+  }
   if (nrow(covariate_matrix) != length(cell_indices)) {
     stop(
       "The rows of `covariate_matrix` must align with `cell_indices`.",
@@ -404,29 +460,38 @@ execute_glmgampoi_response_fit_plan <- function(
   if (any(!is.finite(covariate_matrix))) {
     stop("The covariate matrix contains non-finite values.", call. = FALSE)
   }
+  prepared_design <- if (identical(response_fit_method, "pysceptre")) {
+    prepare_pysceptre_glm_design(covariate_matrix)
+  } else {
+    NULL
+  }
 
   fit_chunk <- function(chunk_index) {
     chunk_name <- names(plan$chunks)[[chunk_index]]
     chunk_ids <- plan$chunks[[chunk_index]]
     if (print_progress) {
       message(
-        "Running glmGamPoi response-fit ", chunk_name, " on ",
+        "Running ", response_fit_method, " response-fit ", chunk_name, " on ",
         length(chunk_ids), " response", if (length(chunk_ids) == 1L) "" else "s", "."
       )
+    }
+    fit_args <- list(
+      response_matrix = response_matrix,
+      response_ids = chunk_ids,
+      cell_indices = cell_indices,
+      covariate_matrix = covariate_matrix,
+      response_fit_method = response_fit_method,
+      chunk_size = plan$chunk_size,
+      check_dependency = FALSE,
+      check_covariates = FALSE
+    )
+    if (identical(response_fit_method, "pysceptre")) {
+      fit_args$prepared_design <- prepared_design
     }
     tryCatch(
       list(
         ok = TRUE,
-        value = perform_response_precomputations_from_matrix(
-          response_matrix = response_matrix,
-          response_ids = chunk_ids,
-          cell_indices = cell_indices,
-          covariate_matrix = covariate_matrix,
-          response_fit_method = "glmGamPoi",
-          chunk_size = plan$chunk_size,
-          check_dependency = FALSE,
-          check_covariates = FALSE
-        ),
+        value = do.call(perform_response_precomputations_from_matrix, fit_args),
         chunk_name = chunk_name,
         response_ids = chunk_ids,
         error = NA_character_
@@ -458,7 +523,7 @@ execute_glmgampoi_response_fit_plan <- function(
       )
     }, character(1L))
     stop(
-      "glmGamPoi response-fit chunk failure(s): ",
+      response_fit_method, " response-fit chunk failure(s): ",
       paste(details, collapse = "; "),
       call. = FALSE
     )
@@ -469,7 +534,7 @@ execute_glmgampoi_response_fit_plan <- function(
   if (is.null(fitted_names) || anyDuplicated(fitted_names) ||
       !identical(fitted_names, plan$missing_ids)) {
     stop(
-      "glmGamPoi response-fit chunks returned an invalid response set.",
+      response_fit_method, " response-fit chunks returned an invalid response set.",
       call. = FALSE
     )
   }
@@ -477,12 +542,24 @@ execute_glmgampoi_response_fit_plan <- function(
 }
 
 
+execute_glmgampoi_response_fit_plan <- function(
+    plan, response_matrix, cell_indices, covariate_matrix,
+    print_progress = FALSE) {
+  execute_response_fit_plan(
+    plan = plan, response_matrix = response_matrix,
+    cell_indices = cell_indices, covariate_matrix = covariate_matrix,
+    print_progress = print_progress, response_fit_method = "glmGamPoi"
+  )
+}
+
+
 perform_response_precomputations_from_matrix <- function(
     response_matrix, response_ids, cell_indices, covariate_matrix,
     response_fit_method = "sceptre", chunk_size = 16L,
-    check_dependency = TRUE, check_covariates = TRUE) {
+    check_dependency = TRUE, check_covariates = TRUE,
+    prepared_design = NULL) {
   response_fit_method <- match.arg(
-    response_fit_method, choices = c("sceptre", "glmGamPoi")
+    response_fit_method, choices = c("sceptre", "glmGamPoi", "pysceptre")
   )
   chunk_size <- validate_response_fit_chunk_size(chunk_size)
   response_ids <- validate_response_ids(response_ids)
@@ -526,6 +603,9 @@ perform_response_precomputations_from_matrix <- function(
   if (identical(response_fit_method, "glmGamPoi")) {
     if (check_dependency) check_glmgampoi_response_fit_dependency()
   }
+  if (identical(response_fit_method, "pysceptre") && is.null(prepared_design)) {
+    prepared_design <- prepare_pysceptre_glm_design(covariate_matrix)
+  }
 
   chunk_starts <- seq.int(1L, length(response_ids), by = chunk_size)
   result <- vector("list", length(response_ids))
@@ -547,6 +627,15 @@ perform_response_precomputations_from_matrix <- function(
         check_dependency = FALSE,
         check_covariates = FALSE
       )
+    } else if (identical(response_fit_method, "pysceptre")) {
+      chunk_result <- lapply(seq_along(chunk_response_ids), function(i) {
+        perform_pysceptre_response_precomputation(
+          expressions = expression_matrix[i, ],
+          covariate_matrix = covariate_matrix,
+          prepared_design = prepared_design
+        )
+      })
+      names(chunk_result) <- chunk_response_ids
     } else {
       chunk_result <- lapply(seq_along(chunk_response_ids), function(i) {
         perform_sceptre_response_precomputation(
@@ -568,10 +657,10 @@ perform_grna_precomputation <- function(
     return_details = FALSE) {
   if (!is.character(grna_fit_method) || length(grna_fit_method) != 1L ||
       is.na(grna_fit_method) ||
-      !(grna_fit_method %in% c("glm.fit", "fast_logistic"))) {
+      !(grna_fit_method %in% c("glm.fit", "fast_logistic", "pysceptre"))) {
     stop(
       "`grna_fit_method` must be a single string, either 'glm.fit' or ",
-      "'fast_logistic'.",
+      "'fast_logistic', or 'pysceptre'.",
       call. = FALSE
     )
   }
@@ -607,6 +696,21 @@ perform_grna_precomputation <- function(
     trt_idxs = trt_idxs,
     n_cells = nrow(covariate_matrix)
   )
+  if (identical(grna_fit_method, "pysceptre")) {
+    indicator <- integer(nrow(covariate_matrix))
+    indicator[trt_idxs_fast] <- 1L
+    fit <- fit_pysceptre_glm(
+      expressions = indicator, covariate_matrix = covariate_matrix,
+      family = "binomial", prepared_design = prepared_design
+    )
+    out <- if (return_fitted_values) fit$fitted.values else fit$coefficients
+    if (!return_details) return(out)
+    return(make_grna_fit_details(
+      value = out, method_requested = grna_fit_method,
+      method_used = fit$method_used, fallback_reason = fit$fallback_reason,
+      converged = isTRUE(fit$converged), iterations = fit$iterations
+    ))
+  }
   if (is.null(prepared_design)) {
     prepared_design <- prepare_grna_logistic_design(covariate_matrix)
   } else {

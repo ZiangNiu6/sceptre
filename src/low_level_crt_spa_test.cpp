@@ -378,8 +378,7 @@ SEXP run_low_level_test_full_crt_spa_v1(
 // The core selects the outward direction relative to the untilted center and
 // performs exactly one root solve.  An unsuccessful finite attempt requests
 // a lazily shared B2 bank from the R orchestration layer.
-// [[Rcpp::export]]
-SEXP run_low_level_test_full_crt_spa_always_v1(
+SEXP run_low_level_test_full_crt_spa_always_impl(
     NumericVector y,
     NumericVector mu,
     NumericVector a,
@@ -390,7 +389,9 @@ SEXP run_low_level_test_full_crt_spa_always_v1(
     int n_trt,
     int side_code,
     int max_iterations = 50,
-    bool use_fast = false) {
+    bool use_fast = false,
+    const List* target_prepared = nullptr,
+    const List* gene_geometry = nullptr) {
   if (side_code < -1 || side_code > 1) {
     stop("side_code must be -1, 0, or 1");
   }
@@ -426,13 +427,20 @@ SEXP run_low_level_test_full_crt_spa_always_v1(
                                y, mu, trt_idxs, n_trt);
   List spa_diagnostics;
   try {
-    spa_diagnostics = use_fast
+    if (target_prepared != nullptr && gene_geometry != nullptr) {
+      if (!use_fast) stop("Shared preparation requires use_fast = TRUE");
+      spa_diagnostics = sceptre::crt_spa_full_outward_prepared(
+          a, w, Z, *target_prepared, *gene_geometry, trt_idxs,
+          kSpaRootTolerance, max_iterations);
+    } else {
+      spa_diagnostics = use_fast
                           ? sceptre::crt_spa_full_outward_cached(
                                 a, w, Z, fitted_probabilities, trt_idxs,
                                 kSpaRootTolerance, max_iterations)
                           : sceptre::crt_spa_full_outward(
                                 a, w, Z, fitted_probabilities, trt_idxs,
                                 kSpaRootTolerance, max_iterations);
+    }
   } catch (const std::exception& error) {
     // Dimension/design errors are programming/input errors and should retain
     // their precise native message.  Regular solver failures are already
@@ -532,6 +540,32 @@ SEXP run_low_level_test_full_crt_spa_always_v1(
         spa_diagnostics, "cache_strategy", "unknown");
   }
   return out;
+}
+
+// Preserve the existing entry point as the reference implementation.
+// [[Rcpp::export]]
+SEXP run_low_level_test_full_crt_spa_always_v1(
+    NumericVector y, NumericVector mu, NumericVector a, NumericVector w,
+    NumericMatrix Z, NumericVector fitted_probabilities,
+    IntegerVector trt_idxs, int n_trt, int side_code,
+    int max_iterations = 50, bool use_fast = false) {
+  return run_low_level_test_full_crt_spa_always_impl(
+      y, mu, a, w, Z, fitted_probabilities, trt_idxs, n_trt, side_code,
+      max_iterations, use_fast);
+}
+
+// Internal prepared entry point. Contexts are run-local and must have been
+// prepared from this gene's weights/design and this target's propensities.
+// [[Rcpp::export]]
+SEXP run_low_level_test_full_crt_spa_always_prepared_v1(
+    NumericVector y, NumericVector mu, NumericVector a, NumericVector w,
+    NumericMatrix Z, NumericVector fitted_probabilities,
+    IntegerVector trt_idxs, int n_trt, int side_code,
+    List target_prepared, List gene_geometry,
+    int max_iterations = 50, bool use_fast = true) {
+  return run_low_level_test_full_crt_spa_always_impl(
+      y, mu, a, w, Z, fitted_probabilities, trt_idxs, n_trt, side_code,
+      max_iterations, use_fast, &target_prepared, &gene_geometry);
 }
 
 // Complete a failed information-SPA attempt against a lazily generated B2

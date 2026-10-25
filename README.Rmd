@@ -27,6 +27,75 @@ knitr::opts_chunk$set(
 
 <!-- badges: end -->
 
+## Optional nuisance fitting backends in this fork
+
+The fitting methods for gene expression (`Y | Z`) and gRNA propensity
+(`X | Z`) can be selected independently:
+
+```{r, eval=FALSE}
+# Native structured Poisson and logistic fitting, inspired by pysceptre.
+obj <- set_analysis_parameters(
+  obj,
+  response_fit_method = "pysceptre",
+  grna_fit_method = "pysceptre"
+)
+
+# Full glmGamPoi response fitting with the structured logistic backend.
+obj <- set_analysis_parameters(
+  obj,
+  response_fit_method = "glmGamPoi",
+  grna_fit_method = "pysceptre"
+)
+```
+
+`response_fit_method = "pysceptre"` uses native RcppEigen Poisson IRLS and
+the existing SCEPTRE conditional negative-binomial size estimator and clamp.
+`"glmGamPoi"` instead fits both NB coefficients and dispersion with
+`glmGamPoi::glm_gp()`. The default response method remains `"sceptre"`.
+The gRNA choices are `"glm.fit"` (default), `"fast_logistic"`, and
+`"pysceptre"`; gRNA fitting is used only for CRT analyses.
+
+The native structured methods exploit mutually exclusive indicator columns
+without constructing a cells-by-squared-covariates array. Genes and targets
+are fitted independently; chunk size controls loading and scheduling rather
+than the numerical fit. Treatment-plus-NT analyses prepare each target's
+own cell population. The methods require no Python runtime. Unsafe numerical
+fits fall back to `stats::glm.fit()` with the same family. Per-target gRNA
+backend, convergence, and fallback information is available through
+`get_grna_fit_diagnostics(obj)`; new response caches carry a
+`fit_diagnostics` attribute.
+
+The structured assembly is adapted from
+[Broad Institute pysceptre](https://github.com/broadinstitute/pysceptre/tree/7adaa9f5fda12e0cf87df972c8fe73b73ef13e7d),
+with native conditioning, line search, and fallback safeguards. These choices
+do not alter the selected association-test or resampling algorithm, but
+numerical changes in nuisance estimates can affect downstream results.
+Speed depends on the covariate design and workload. A reproducible fitting
+microbenchmark is available at `inst/benchmarks/pysceptre-glm.R`.
+
+## Experimental shared preparation for CRT SPA
+
+The existing `crt_spa_always_fast` method can reuse target propensity
+transformations and small gene information matrices within one analysis:
+
+```{r, eval=FALSE}
+options(sceptre.crt_spa_shared_preparation = TRUE)
+```
+
+The default is `FALSE`. This optimization applies when response fits share
+the outer-regression cell population. It retains the exact Bernoulli CGF,
+information statistic, solver controls, and empirical fallback rules. Other
+testing modes keep their existing implementation. Preparations are run-local
+and are not saved in the response-fit cache. Analysis phase timings include
+all preparation costs and report preparation counts and retained geometry size.
+The prepared native call retains the R owners of read-only target arrays and
+gene weights, avoiding full-length copies; its feature matrix remains pair-local.
+Prepared six-column designs (including the intercept) use a fixed seven-moment
+kernel and retain the
+accepted cell tilts for the final stable KL calculation, guarded by an exact
+state match. Other dimensions use the generic evaluator. No bounded gene-vector
+cache is retained.
+
 ## v0.10.0: `sceptre` at massive scale
 
 `sceptre` v0.10.0 represents another a major upgrade to the `sceptre` software. We have integrated `sceptre` with [`ondisc`](https://timothy-barry.github.io/ondisc/), a companion R package that facilitates large-scale computing on single-cell data. `sceptre` now supports the analysis of single-cell CRISPR screen data out-of-core on a laptop or distributed across hundreds of processors on a computing cluster or cloud.

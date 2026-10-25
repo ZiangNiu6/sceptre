@@ -341,7 +341,8 @@ crt_glm_factored_out <- function(B1, B2, B3, fit_parametric_curve, use_crt_spa, 
                                  response_matrix, side_code, cells_in_use,
                                  use_fast = FALSE, grna_fit_method = "glm.fit",
                                  prepared_grna_design = NULL,
-                                 collect_grna_diagnostics = FALSE) {
+                                 collect_grna_diagnostics = FALSE,
+                                 shared_spa_gene_geometry = NULL) {
   result_list_inner <- vector(mode = "list", length = length(response_ids))
   # precomputation on grna
   idxs <- get_idx_f(curr_grna_group)
@@ -359,6 +360,15 @@ crt_glm_factored_out <- function(B1, B2, B3, fit_parametric_curve, use_crt_spa, 
       return_fitted_values = TRUE, grna_fit_method = grna_fit_method,
       prepared_design = prepared_grna_design
     )
+  }
+  target_prepared <- NULL
+  if (!is.null(shared_spa_gene_geometry)) {
+    if (!isTRUE(use_crt_spa_always) || !isTRUE(use_fast)) {
+      stop("Shared CRT SPA preparation requires `crt_spa_always_fast`.", call. = FALSE)
+    }
+    target_preparation_started <- proc.time()
+    target_prepared <- prepare_crt_spa_target_cpp(propensity = fitted_probabilities)
+    target_preparation_duration <- proc.time() - target_preparation_started
   }
   synthetic_idxs <- if (use_crt_spa_always || use_crt_spa_empirical_always) {
     NULL
@@ -409,19 +419,41 @@ crt_glm_factored_out <- function(B1, B2, B3, fit_parametric_curve, use_crt_spa, 
         use_fast = use_fast
       )
     } else if (use_crt_spa_always) {
-      result <- run_low_level_test_full_crt_spa_always_v1(
-        y = expression_vector,
-        mu = pieces_precomp$mu,
-        a = pieces_precomp$a,
-        w = pieces_precomp$b,
-        Z = covariate_matrix,
-        fitted_probabilities = fitted_probabilities,
-        trt_idxs = trt_idxs,
-        n_trt = n_trt,
-        side_code = side_code,
-        max_iterations = 50L,
-        use_fast = use_fast
-      )
+      if (is.null(target_prepared)) {
+        result <- run_low_level_test_full_crt_spa_always_v1(
+          y = expression_vector,
+          mu = pieces_precomp$mu,
+          a = pieces_precomp$a,
+          w = pieces_precomp$b,
+          Z = covariate_matrix,
+          fitted_probabilities = fitted_probabilities,
+          trt_idxs = trt_idxs,
+          n_trt = n_trt,
+          side_code = side_code,
+          max_iterations = 50L,
+          use_fast = use_fast
+        )
+      } else {
+        gene_geometry <- shared_spa_gene_geometry[[curr_response_id]]
+        if (is.null(gene_geometry)) {
+          stop("Missing shared CRT SPA geometry for `", curr_response_id, "`.", call. = FALSE)
+        }
+        result <- run_low_level_test_full_crt_spa_always_prepared_v1(
+          y = expression_vector,
+          mu = pieces_precomp$mu,
+          a = pieces_precomp$a,
+          w = pieces_precomp$b,
+          Z = covariate_matrix,
+          fitted_probabilities = fitted_probabilities,
+          trt_idxs = trt_idxs,
+          n_trt = n_trt,
+          side_code = side_code,
+          max_iterations = 50L,
+          use_fast = use_fast,
+          target_prepared = target_prepared,
+          gene_geometry = gene_geometry
+        )
+      }
       if (isTRUE(result$needs_empirical_fallback)) {
         if (is.null(synthetic_idxs)) {
           synthetic_idxs <- crt_index_sampler_fast(
@@ -511,6 +543,14 @@ crt_glm_factored_out <- function(B1, B2, B3, fit_parametric_curve, use_crt_spa, 
   if (collect_grna_diagnostics) {
     attr(result_list_inner, "grna_fit_diagnostics") <- grna_fit$diagnostics
   }
+  if (!is.null(target_prepared)) {
+    attr(result_list_inner, "spa_preparation_timings") <- data.frame(
+      n_targets = 1L, n_pairs = length(response_ids),
+      target_preparation_cpu_seconds = unname(target_preparation_duration[["user.self"]] +
+                                                target_preparation_duration[["sys.self"]]),
+      target_preparation_elapsed_seconds = unname(target_preparation_duration[["elapsed"]])
+    )
+  }
   return(result_list_inner)
 }
 
@@ -548,7 +588,7 @@ discovery_ntcells_crt <- function(B1, B2, B3, fit_parametric_curve, use_crt_spa,
   } else {
     crt_index_sampler_fast(fitted_probabilities = fitted_probabilities, B = B1 + B2 + B3)
   }
-  response_precomp_list <- if (identical(response_fit_method, "glmGamPoi")) {
+  response_precomp_list <- if (response_fit_method %in% c("glmGamPoi", "pysceptre")) {
     perform_response_precomputations_from_matrix(
       response_matrix = response_matrix,
       response_ids = response_ids,

@@ -42,6 +42,39 @@ run_glmgampoi_response_fit_stage <- function(
 }
 
 
+run_response_fit_stage <- function(
+    response_matrix, response_ids, response_precomputations, cell_indices,
+    covariate_matrix, chunk_size, parallel, n_processors, print_progress,
+    response_fit_method = "pysceptre") {
+  if (identical(response_fit_method, "glmGamPoi")) {
+    return(run_glmgampoi_response_fit_stage(
+      response_matrix, response_ids, response_precomputations, cell_indices,
+      covariate_matrix, chunk_size, parallel, n_processors, print_progress
+    ))
+  }
+  plan <- plan_response_fits(
+    response_ids = response_ids,
+    response_precomputations = response_precomputations,
+    chunk_size = chunk_size, parallel = parallel, n_processors = n_processors
+  )
+  started <- proc.time()[["elapsed"]]
+  fitted <- execute_response_fit_plan(
+    plan = plan, response_matrix = response_matrix,
+    cell_indices = cell_indices, covariate_matrix = covariate_matrix,
+    print_progress = print_progress, response_fit_method = response_fit_method
+  )
+  updated <- merge_response_fit_cache(
+    response_precomputations = response_precomputations,
+    new_precomputations = fitted, requested_ids = plan$requested_ids
+  )
+  list(
+    response_precomputations = updated,
+    elapsed_seconds = proc.time()[["elapsed"]] - started,
+    plan = plan
+  )
+}
+
+
 make_analysis_phase_timings <- function(
     runner, analysis_type, response_fit_method, response_fitting_scope,
     runner_elapsed_seconds,
@@ -134,8 +167,8 @@ run_perm_test_in_memory <- function(response_matrix, grna_assignments, covariate
   } else {
     "embedded_in_association_testing"
   }
-  if (run_outer_regression && identical(response_fit_method, "glmGamPoi")) {
-    fit_stage <- run_glmgampoi_response_fit_stage(
+  if (run_outer_regression && response_fit_method %in% c("glmGamPoi", "pysceptre")) {
+    fit_stage <- run_response_fit_stage(
       response_matrix = response_matrix,
       response_ids = response_ids,
       response_precomputations = response_precomputations,
@@ -144,7 +177,8 @@ run_perm_test_in_memory <- function(response_matrix, grna_assignments, covariate
       chunk_size = response_fit_chunk_size,
       parallel = parallel,
       n_processors = n_processors,
-      print_progress = print_progress
+      print_progress = print_progress,
+      response_fit_method = response_fit_method
     )
     response_precomputations <- fit_stage$response_precomputations
     response_fit_elapsed <- fit_stage$elapsed_seconds
@@ -192,9 +226,9 @@ run_perm_test_in_memory <- function(response_matrix, grna_assignments, covariate
         if (!is.null(response_precomputations[[response_id]])) {
           response_precomp <- response_precomputations[[response_id]]
         } else {
-          if (identical(response_fit_method, "glmGamPoi")) {
+          if (response_fit_method %in% c("glmGamPoi", "pysceptre")) {
             stop(
-              "A globally cacheable glmGamPoi response fit was not precomputed: ",
+              "A globally cacheable ", response_fit_method, " response fit was not precomputed: ",
               response_id, ".",
               call. = FALSE
             )
@@ -331,6 +365,8 @@ run_crt_in_memory_v2 <- function(response_matrix, grna_assignments, covariate_ma
   use_crt_spa_always <- (resampling_approximation_base == "crt_spa_always")
   use_crt_spa_empirical <- (resampling_approximation_base == "crt_spa_empirical")
   use_crt_spa_empirical_always <- (resampling_approximation_base == "crt_spa_empirical_always")
+  use_shared_spa_preparation <- run_outer_regression && use_crt_spa_always &&
+    use_fast && isTRUE(getOption("sceptre.crt_spa_shared_preparation", FALSE))
 
   # 1. subset covariate matrix to cells_in_use and then to nt cells (if applicable)
   covariate_matrix <- covariate_matrix[cells_in_use,,drop=FALSE]
@@ -398,8 +434,8 @@ run_crt_in_memory_v2 <- function(response_matrix, grna_assignments, covariate_ma
   }
   if (run_outer_regression) {
     response_fit_started <- proc.time()[["elapsed"]]
-    if (identical(response_fit_method, "glmGamPoi")) {
-      fit_stage <- run_glmgampoi_response_fit_stage(
+    if (response_fit_method %in% c("glmGamPoi", "pysceptre")) {
+      fit_stage <- run_response_fit_stage(
         response_matrix = response_matrix,
         response_ids = response_ids,
         response_precomputations = response_precomputations,
@@ -408,7 +444,8 @@ run_crt_in_memory_v2 <- function(response_matrix, grna_assignments, covariate_ma
         chunk_size = response_fit_chunk_size,
         parallel = parallel,
         n_processors = n_processors,
-        print_progress = print_progress
+        print_progress = print_progress,
+        response_fit_method = response_fit_method
       )
       response_precomputations <- fit_stage$response_precomputations
       response_fit_chunk_sizes <- lengths(fit_stage$plan$chunks)
@@ -445,6 +482,7 @@ run_crt_in_memory_v2 <- function(response_matrix, grna_assignments, covariate_ma
   perform_association_analysis <- function(curr_grna_groups, proc_id) {
     result_out_list <- vector(mode = "list", length = length(curr_grna_groups))
     grna_diagnostics <- vector(mode = "list", length = length(curr_grna_groups))
+    spa_preparation_timings <- vector(mode = "list", length = length(curr_grna_groups))
     f_name <- if (parallel && print_progress) paste0(get_log_dir(log_dir), analysis_type, "_", proc_id, ".out") else NULL
 
     for (grna_group_idx in seq_along(curr_grna_groups)) {
@@ -468,7 +506,8 @@ run_crt_in_memory_v2 <- function(response_matrix, grna_assignments, covariate_ma
           response_matrix, side_code, cells_in_use, use_fast = use_fast,
           grna_fit_method = grna_fit_method,
           prepared_grna_design = shared_grna_preparation$design,
-          collect_grna_diagnostics = TRUE
+          collect_grna_diagnostics = TRUE,
+          shared_spa_gene_geometry = shared_spa_preparation$geometry
         )
       } else {
         curr_response_result <- discovery_ntcells_crt(
@@ -485,11 +524,15 @@ run_crt_in_memory_v2 <- function(response_matrix, grna_assignments, covariate_ma
       }
       result_out_list[[grna_group_idx]] <- construct_data_frame_v2(curr_df, curr_response_result, output_amount)
       grna_diagnostics[[grna_group_idx]] <- attr(curr_response_result, "grna_fit_diagnostics", exact = TRUE)
+      spa_preparation_timings[grna_group_idx] <- list(
+        attr(curr_response_result, "spa_preparation_timings", exact = TRUE)
+      )
     }
     # 9. prepare output
     list(
       result = data.table::rbindlist(result_out_list, fill = TRUE),
-      grna_fit_diagnostics = data.table::rbindlist(grna_diagnostics, fill = TRUE)
+      grna_fit_diagnostics = data.table::rbindlist(grna_diagnostics, fill = TRUE),
+      spa_preparation_timings = data.table::rbindlist(spa_preparation_timings, fill = TRUE)
     )
   }
 
@@ -497,9 +540,18 @@ run_crt_in_memory_v2 <- function(response_matrix, grna_assignments, covariate_ma
   grna_groups <- unique(response_grna_group_pairs$grna_group)
   partitioned_grna_group_ids <- partition_response_ids(response_ids = grna_groups, parallel = parallel, n_processors = n_processors)
   association_started <- proc.time()[["elapsed"]]
+  shared_spa_preparation <- list(geometry = NULL, elapsed_seconds = 0,
+                                 cpu_seconds = 0, n_workers = 0L)
+  if (use_shared_spa_preparation && length(response_ids)) {
+    shared_spa_preparation <- prepare_crt_spa_gene_geometries(
+      response_ids = response_ids, response_precomputations = response_precomputations,
+      covariate_matrix = covariate_matrix, parallel = parallel,
+      n_processors = n_processors, chunk_size = response_fit_chunk_size
+    )
+  }
   shared_grna_preparation <- list(design = NULL, cpu_seconds = 0, elapsed_seconds = 0)
-  if (identical(grna_fit_method, "fast_logistic") && run_outer_regression && length(grna_groups)) {
-    shared_grna_preparation <- prepare_grna_design_timed(covariate_matrix)
+  if (grna_fit_method %in% c("fast_logistic", "pysceptre") && run_outer_regression && length(grna_groups)) {
+    shared_grna_preparation <- prepare_grna_design_timed(covariate_matrix, grna_fit_method)
   }
   if (!parallel) {
     res <- lapply(partitioned_grna_group_ids, perform_association_analysis)
@@ -513,6 +565,7 @@ run_crt_in_memory_v2 <- function(response_matrix, grna_assignments, covariate_ma
   association_elapsed <- proc.time()[["elapsed"]] - association_started
   result <- data.table::rbindlist(lapply(res, `[[`, "result"), fill = TRUE)
   grna_diagnostics <- data.table::rbindlist(lapply(res, `[[`, "grna_fit_diagnostics"), fill = TRUE)
+  spa_preparation_timings <- data.table::rbindlist(lapply(res, `[[`, "spa_preparation_timings"), fill = TRUE)
 
   phase_timings <- make_analysis_phase_timings(
     runner = "run_crt_in_memory_v2",
@@ -543,6 +596,22 @@ run_crt_in_memory_v2 <- function(response_matrix, grna_assignments, covariate_ma
     phase_timings, grna_diagnostics, grna_fit_method,
     shared_grna_preparation, shared_design = run_outer_regression
   )
+  phase_timings$crt_spa_shared_preparation_enabled <- use_shared_spa_preparation
+  phase_timings$crt_spa_gene_geometry_n_prepared <- length(shared_spa_preparation$geometry)
+  phase_timings$crt_spa_gene_preparation_n_workers <- shared_spa_preparation$n_workers
+  phase_timings$crt_spa_gene_preparation_cpu_seconds <- shared_spa_preparation$cpu_seconds
+  phase_timings$crt_spa_gene_preparation_elapsed_seconds <- shared_spa_preparation$elapsed_seconds
+  phase_timings$crt_spa_gene_geometry_bytes <- if (use_shared_spa_preparation) {
+    as.numeric(utils::object.size(shared_spa_preparation$geometry))
+  } else {
+    0
+  }
+  phase_timings$crt_spa_target_n_prepared <- sum(spa_preparation_timings$n_targets)
+  phase_timings$crt_spa_shared_preparation_pair_count <- sum(spa_preparation_timings$n_pairs)
+  phase_timings$crt_spa_target_preparation_cpu_seconds <-
+    sum(spa_preparation_timings$target_preparation_cpu_seconds)
+  phase_timings$crt_spa_target_preparation_elapsed_sum_seconds <-
+    sum(spa_preparation_timings$target_preparation_elapsed_seconds)
   return(list(
     result = result,
     response_precomputations = response_precomputations,

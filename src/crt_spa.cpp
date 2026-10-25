@@ -8,7 +8,9 @@
 #include "crt_spa.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstring>
 #include <limits>
 #include <string>
 #include <utility>
@@ -61,11 +63,48 @@ struct InfoCache {
   int score_sign = 1;
   bool leading_intercept = true;
   bool information_invertible = false;
+  bool use_prepared_kernels = false;
   MatrixXd G;  // Columns: signed a, then w * Z.
   MatrixXd C_inv;
   VectorXd offsets;
   VectorXd propensity;
   VectorXd weights;
+
+  // Reference caches own their Eigen vectors. Prepared caches instead retain
+  // R owners and borrow read-only data for the duration of the native call.
+  // Owned pointers are resolved on access, so default copies/moves cannot leave
+  // pointers into another cache's Eigen storage. Borrowed pointers remain valid
+  // because the corresponding R owners are copied/moved with the cache.
+  const double* offsets_data() const {
+    return offsets_view_ == nullptr ? offsets.data() : offsets_view_;
+  }
+
+  const double* propensity_data() const {
+    return propensity_view_ == nullptr ? propensity.data() : propensity_view_;
+  }
+
+  const double* weights_data() const {
+    return weights_view_ == nullptr ? weights.data() : weights_view_;
+  }
+
+  void bind_prepared_arrays(const Rcpp::NumericVector& offsets_r,
+                            const Rcpp::NumericVector& propensity_r,
+                            const Rcpp::NumericVector& weights_r) {
+    offsets_owner_ = offsets_r;
+    propensity_owner_ = propensity_r;
+    weights_owner_ = weights_r;
+    offsets_view_ = offsets_r.begin();
+    propensity_view_ = propensity_r.begin();
+    weights_view_ = weights_r.begin();
+  }
+
+ private:
+  Rcpp::RObject offsets_owner_;
+  Rcpp::RObject propensity_owner_;
+  Rcpp::RObject weights_owner_;
+  const double* offsets_view_ = nullptr;
+  const double* propensity_view_ = nullptr;
+  const double* weights_view_ = nullptr;
 };
 
 struct Boundary {
@@ -122,6 +161,12 @@ struct Evaluation {
   VectorXd moment;
   MatrixXd Sgg;
   Boundary boundary;
+  // Prepared d=7 evaluations own their tilts and the exact theta that produced
+  // them. They move with an accepted Evaluation; rejected trials retain no
+  // shared scratch state. A partial buffer is never eligible for rate reuse.
+  VectorXd retained_tilts;
+  VectorXd retained_theta;
+  bool retained_tilts_complete = false;
 };
 
 struct ZeroMoments {
@@ -168,13 +213,14 @@ Evaluation evaluate_crt_exact(const InfoCache& cache,
   const double lambda = x[d];
   out.moment.setZero(d);
   out.Sgg.setZero(d, d);
+  const double* offsets = cache.offsets_data();
 
   for (int i = 0; i < cache.n; ++i) {
     const double* g = cache.G.data() + i;
     double tilt = 0.0;
     for (int j = 0; j < d; ++j) tilt += theta[j] * g[j * cache.n];
     if (!std::isfinite(tilt)) return out;
-    const double pi = expit_stable(cache.offsets[i] + tilt);
+    const double pi = expit_stable(offsets[i] + tilt);
     const double h = pi * (1.0 - pi);
     for (int j = 0; j < d; ++j) {
       const double gj = g[j * cache.n];
@@ -202,6 +248,103 @@ Evaluation evaluate_crt_exact(const InfoCache& cache,
       (out.Sgg * out.boundary.grad).transpose();
   out.valid = out.residual.allFinite() && out.jacobian.allFinite();
   return out;
+}
+
+// The common six-covariate design has seven score/nuisance moments. Gather
+// each feature once per cell and use fixed-size local lower-triangle sums.
+// Every accumulator retains the reference cell order and h * gj * gk expression.
+// No horizontal reductions, approximate functions, or new FMA calls are used.
+bool accumulate_crt_moments_d7(const InfoCache& cache,
+                                const VectorXd& theta,
+                                VectorXd& moment,
+                                MatrixXd& covariance,
+                                VectorXd& retained_tilts) {
+  std::array<double, 7> moment_sum{};
+  std::array<double, 28> covariance_sum{};
+  std::array<const double*, 7> columns;
+  for (int j = 0; j < 7; ++j) {
+    columns[j] = cache.G.data() + j * cache.n;
+  }
+  const double* offsets = cache.offsets_data();
+  bool finite_tilts = true;
+  for (int i = 0; i < cache.n; ++i) {
+    std::array<double, 7> g;
+    for (int j = 0; j < 7; ++j) g[j] = columns[j][i];
+    double tilt = 0.0;
+    for (int j = 0; j < 7; ++j) tilt += theta[j] * g[j];
+    if (!std::isfinite(tilt)) {
+      finite_tilts = false;
+      break;
+    }
+    retained_tilts[i] = tilt;
+    const double pi = expit_stable(offsets[i] + tilt);
+    const double h = pi * (1.0 - pi);
+    int packed = 0;
+    for (int j = 0; j < 7; ++j) {
+      const double gj = g[j];
+      moment_sum[j] += pi * gj;
+      for (int k = 0; k <= j; ++k) {
+        covariance_sum[packed++] += h * gj * g[k];
+      }
+    }
+  }
+  int packed = 0;
+  for (int j = 0; j < 7; ++j) {
+    moment[j] = moment_sum[j];
+    for (int k = 0; k <= j; ++k) {
+      covariance(j, k) = covariance_sum[packed++];
+    }
+  }
+  return finite_tilts;
+}
+
+Evaluation evaluate_crt_optimized(const InfoCache& cache,
+                              const VectorXd& x,
+                              const double target) {
+  if (cache.d != 7) return evaluate_crt_exact(cache, x, target);
+  Evaluation out;
+  const int d = cache.d;
+  if (x.size() != d + 1 || !x.allFinite()) {
+    return out;
+  }
+  const VectorXd theta = x.head(d);
+  const double lambda = x[d];
+  out.moment.setZero(d);
+  out.Sgg.setZero(d, d);
+  out.retained_tilts.resize(cache.n);
+
+  if (!accumulate_crt_moments_d7(
+          cache, theta, out.moment, out.Sgg, out.retained_tilts)) {
+    return out;
+  }
+  out.retained_theta = theta;
+  out.retained_tilts_complete = true;
+
+  symmetrize_lower(out.Sgg);
+  if (!out.moment.allFinite() || !out.Sgg.allFinite()) return out;
+  out.boundary = boundary_terms(out.moment, cache.C_inv);
+  if (!out.boundary.valid) return out;
+
+  out.residual.setZero(d + 1);
+  out.residual.head(d) = theta - lambda * out.boundary.grad;
+  out.residual[d] = out.boundary.b - target;
+  out.jacobian.setZero(d + 1, d + 1);
+  out.jacobian.block(0, 0, d, d) =
+      MatrixXd::Identity(d, d) -
+      lambda * out.boundary.hess * out.Sgg;
+  out.jacobian.block(0, d, d, 1) = -out.boundary.grad;
+  out.jacobian.block(d, 0, 1, d) =
+      (out.Sgg * out.boundary.grad).transpose();
+  out.valid = out.residual.allFinite() && out.jacobian.allFinite();
+  return out;
+}
+
+Evaluation evaluate_crt_dispatch(const InfoCache& cache,
+                                 const VectorXd& x,
+                                 const double target) {
+  return cache.use_prepared_kernels
+             ? evaluate_crt_optimized(cache, x, target)
+             : evaluate_crt_exact(cache, x, target);
 }
 
 Rcpp::List failure_result(const InfoCache& cache,
@@ -287,6 +430,41 @@ double bernoulli_kl_from_tilt(const double p, const double tilt) {
   return kl >= 0.0 ? kl : (kl > -1.0e-15 ? 0.0 : kNaN);
 }
 
+// Prepared-only equivalent. For 0 < tilt < 700 the reference's initial
+// exp(-tilt) result is overwritten by this same expm1 expression. Its initial
+// denominator is necessarily positive and finite for an interior p, so skip
+// that discarded calculation while retaining all endpoint/large-tilt guards.
+double bernoulli_kl_from_tilt_optimized(const double p, const double tilt) {
+  if (!std::isfinite(p) || !std::isfinite(tilt) || p < 0.0 || p > 1.0) {
+    return kNaN;
+  }
+  if (p == 0.0 || p == 1.0 || tilt == 0.0) return 0.0;
+
+  double delta = kNaN;
+  if (tilt > 0.0 && tilt < 700.0) {
+    const double expm1_tilt = std::expm1(tilt);
+    const double denominator = 1.0 + p * expm1_tilt;
+    delta = p * (1.0 - p) * expm1_tilt / denominator;
+  } else if (tilt > 0.0) {
+    const double exp_negative = std::exp(-tilt);
+    const double denominator = p + (1.0 - p) * exp_negative;
+    if (!std::isfinite(denominator) || denominator <= 0.0) return kNaN;
+    delta = p / denominator - p;
+  } else {
+    const double expm1_tilt = std::expm1(tilt);
+    const double denominator = 1.0 + p * expm1_tilt;
+    if (!std::isfinite(denominator) || denominator <= 0.0) return kNaN;
+    delta = p * (1.0 - p) * expm1_tilt / denominator;
+  }
+
+  const double hx = xlog1px_minus_x(delta / p);
+  const double hy = xlog1px_minus_x(-delta / (1.0 - p));
+  if (!std::isfinite(hx) || !std::isfinite(hy)) return kNaN;
+  const double kl = p * hx + (1.0 - p) * hy;
+  if (!std::isfinite(kl)) return kNaN;
+  return kl >= 0.0 ? kl : (kl > -1.0e-15 ? 0.0 : kNaN);
+}
+
 double lr_upper_tail(const double rate, const double q2,
                      const double direction) {
   if (!std::isfinite(rate) || !std::isfinite(q2) ||
@@ -312,6 +490,7 @@ double lr_upper_tail(const double rate, const double q2,
 
 double crt_rate(const InfoCache& cache, const VectorXd& theta) {
   double rate = 0.0;
+  const double* propensity = cache.propensity_data();
   for (int i = 0; i < cache.n; ++i) {
     const double* g = cache.G.data() + i;
     double tilt = 0.0;
@@ -320,11 +499,68 @@ double crt_rate(const InfoCache& cache, const VectorXd& theta) {
     }
     if (!std::isfinite(tilt)) return kNaN;
     const double rate_term = bernoulli_kl_from_tilt(
-        cache.propensity[i], tilt);
+        propensity[i], tilt);
     if (!std::isfinite(rate_term)) return kNaN;
     rate += rate_term;
   }
   return rate;
+}
+
+
+double crt_rate_optimized(const InfoCache& cache, const VectorXd& theta) {
+  double rate = 0.0;
+  const double* propensity = cache.propensity_data();
+  for (int i = 0; i < cache.n; ++i) {
+    const double* g = cache.G.data() + i;
+    double tilt = 0.0;
+    for (int j = 0; j < cache.d; ++j) {
+      tilt += theta[j] * g[j * cache.n];
+    }
+    if (!std::isfinite(tilt)) return kNaN;
+    const double rate_term = bernoulli_kl_from_tilt_optimized(
+        propensity[i], tilt);
+    if (!std::isfinite(rate_term)) return kNaN;
+    rate += rate_term;
+  }
+  return rate;
+}
+bool can_reuse_retained_tilts(const InfoCache& cache,
+                               const Evaluation& evaluation,
+                               const VectorXd& theta) {
+  if (!evaluation.retained_tilts_complete ||
+      evaluation.retained_tilts.size() != cache.n ||
+      evaluation.retained_theta.size() != cache.d || theta.size() != cache.d) {
+    return false;
+  }
+  // In particular, do not reuse tilts from an earlier/rejected Newton state.
+  // Bitwise comparison also distinguishes signed zero without rescanning G.
+  return std::memcmp(evaluation.retained_theta.data(), theta.data(),
+                     static_cast<std::size_t>(cache.d) * sizeof(double)) == 0;
+}
+
+double crt_rate_from_retained_tilts(const InfoCache& cache,
+                                    const VectorXd& tilts) {
+  const double* propensity = cache.propensity_data();
+  double rate = 0.0;
+  for (int i = 0; i < cache.n; ++i) {
+    const double tilt = tilts[i];
+    if (!std::isfinite(tilt)) return kNaN;
+    const double rate_term = bernoulli_kl_from_tilt_optimized(
+        propensity[i], tilt);
+    if (!std::isfinite(rate_term)) return kNaN;
+    rate += rate_term;
+  }
+  return rate;
+}
+
+double select_prepared_crt_rate(const InfoCache& cache,
+                                 const Evaluation& evaluation,
+                                 const VectorXd& theta,
+                                 bool* used_retained_rate = nullptr) {
+  const bool reuse = can_reuse_retained_tilts(cache, evaluation, theta);
+  if (used_retained_rate != nullptr) *used_retained_rate = reuse;
+  return reuse ? crt_rate_from_retained_tilts(cache, evaluation.retained_tilts)
+               : crt_rate_optimized(cache, theta);
 }
 
 Rcpp::List finalize_crt(const InfoCache& cache,
@@ -335,7 +571,9 @@ Rcpp::List finalize_crt(const InfoCache& cache,
                         const int iterations,
                         const std::vector<double>& history) {
   const VectorXd theta = x.head(cache.d);
-  const double rate = crt_rate(cache, theta);
+  const double rate = cache.use_prepared_kernels
+                          ? select_prepared_crt_rate(cache, evaluation, theta)
+                          : crt_rate(cache, theta);
   const double q2 = theta.dot(evaluation.Sgg * theta);
   const double raw_p = lr_upper_tail(rate, q2, theta[0]);
   const double lambda = x[cache.d];
@@ -493,6 +731,249 @@ InfoCache build_cache(const Rcpp::NumericVector& a,
   return cache;
 }
 
+// Prepared contexts are internal, run-local inputs. Their schema/dimensions are
+// checked here; the caller must rebuild them whenever the corresponding target
+// probabilities or gene weights/design change. No process-global cache is used.
+SEXP prepared_field(const Rcpp::List& preparation,
+                     const char* name,
+                     const SEXPTYPE type,
+                     const char* context) {
+  if (!preparation.containsElementNamed(name)) {
+    Rcpp::stop(std::string(context) + " is missing " + name);
+  }
+  SEXP field = preparation[name];
+  if (TYPEOF(field) != type) {
+    Rcpp::stop(std::string(context) + " has an invalid " + name + " type");
+  }
+  return field;
+}
+
+int prepared_integer(const Rcpp::List& preparation,
+                       const char* name,
+                       const char* context) {
+  SEXP field = prepared_field(preparation, name, INTSXP, context);
+  if (Rf_xlength(field) != 1 || INTEGER(field)[0] == NA_INTEGER) {
+    Rcpp::stop(std::string(context) + " has an invalid " + name);
+  }
+  return INTEGER(field)[0];
+}
+
+bool prepared_boolean(const Rcpp::List& preparation,
+                        const char* name,
+                        const char* context) {
+  SEXP field = prepared_field(preparation, name, LGLSXP, context);
+  if (Rf_xlength(field) != 1 || LOGICAL(field)[0] == NA_LOGICAL) {
+    Rcpp::stop(std::string(context) + " has an invalid " + name);
+  }
+  return LOGICAL(field)[0] != 0;
+}
+
+Rcpp::NumericVector prepared_vector(const Rcpp::List& preparation,
+                                     const char* name,
+                                     const int n,
+                                     const char* context) {
+  SEXP field = prepared_field(preparation, name, REALSXP, context);
+  if (Rf_xlength(field) != n || Rf_isMatrix(field)) {
+    Rcpp::stop(std::string(context) + " has an invalid " + name + " length");
+  }
+  return Rcpp::NumericVector(field);
+}
+
+Rcpp::List prepare_target(const Rcpp::NumericVector& propensity) {
+  const int n = propensity.size();
+  if (n < 2) Rcpp::stop("input dimensions do not match");
+  Rcpp::NumericVector offsets(n), zero_probability(n), zero_variance(n);
+  bool all_propensities_interior = true;
+  for (int i = 0; i < n; ++i) {
+    if (!std::isfinite(propensity[i]) || propensity[i] < 0.0 ||
+        propensity[i] > 1.0) {
+      Rcpp::stop("propensity must be finite and lie in [0, 1]");
+    }
+    offsets[i] = std::log(propensity[i] / (1.0 - propensity[i]));
+    const double pi = expit_stable(offsets[i]);
+    zero_probability[i] = pi;
+    zero_variance[i] = pi * (1.0 - pi);
+    if (propensity[i] <= 0.0 || propensity[i] >= 1.0) {
+      all_propensities_interior = false;
+    }
+  }
+  return Rcpp::List::create(
+      Rcpp::Named("schema_version") = 1,
+      Rcpp::Named("n") = n,
+      Rcpp::Named("propensity") = propensity,
+      Rcpp::Named("offsets") = offsets,
+      Rcpp::Named("zero_probability") = zero_probability,
+      Rcpp::Named("zero_variance") = zero_variance,
+      Rcpp::Named("all_propensities_interior") = all_propensities_interior);
+}
+
+Rcpp::List prepare_gene_geometry(const Rcpp::NumericVector& w,
+                                  const Rcpp::NumericMatrix& Z) {
+  const int n = w.size();
+  const int p = Z.ncol();
+  if (n < 2 || p < 1 || Z.nrow() != n) {
+    Rcpp::stop("input dimensions do not match");
+  }
+  MatrixXd C = MatrixXd::Zero(p, p);
+  VectorXd weighted_z = VectorXd::Zero(p);
+  bool leading_intercept = true;
+  for (int i = 0; i < n; ++i) {
+    if (!std::isfinite(w[i]) || w[i] <= 0.0) {
+      Rcpp::stop("w must be positive and finite");
+    }
+    for (int j = 0; j < p; ++j) {
+      if (!std::isfinite(Z(i, j))) Rcpp::stop("Z must be finite");
+      weighted_z[j] = w[i] * Z(i, j);
+      if (!std::isfinite(weighted_z[j])) {
+        Rcpp::stop("w multiplied by Z must be finite");
+      }
+    }
+    // This expression and its accumulation order intentionally match the
+    // reference build_cache(), including the division by w[i].
+    for (int j = 0; j < p; ++j) {
+      for (int k = 0; k <= j; ++k) {
+        C(j, k) += weighted_z[j] * weighted_z[k] / w[i];
+      }
+    }
+    if (std::abs(Z(i, 0) - 1.0) > 1e-10) leading_intercept = false;
+  }
+  symmetrize_lower(C);
+  if (!C.allFinite()) {
+    Rcpp::stop("Z transpose diag(w) Z must be finite");
+  }
+  MatrixXd C_inv;
+  bool information_invertible = true;
+  try {
+    Eigen::LLT<MatrixXd> decomposition(C);
+    if (decomposition.info() != Eigen::Success) {
+      information_invertible = false;
+    } else {
+      C_inv = decomposition.solve(MatrixXd::Identity(p, p));
+      information_invertible = decomposition.info() == Eigen::Success &&
+                               C_inv.allFinite();
+    }
+  } catch (...) {
+    information_invertible = false;
+  }
+  if (!information_invertible) {
+    C_inv = MatrixXd::Constant(p, p, kNaN);
+  }
+  return Rcpp::List::create(
+      Rcpp::Named("schema_version") = 1,
+      Rcpp::Named("n") = n,
+      Rcpp::Named("p") = p,
+      Rcpp::Named("C_inv") = Rcpp::wrap(C_inv),
+      Rcpp::Named("information_invertible") = information_invertible,
+      Rcpp::Named("leading_intercept") = leading_intercept);
+}
+
+InfoCache build_prepared_cache(const Rcpp::NumericVector& a,
+                                 const Rcpp::NumericVector& w,
+                                 const Rcpp::NumericMatrix& Z,
+                                 const Rcpp::List& target_prepared,
+                                 const Rcpp::List& gene_geometry,
+                                 ZeroMoments& moments) {
+  const int n = a.size();
+  const int p = Z.ncol();
+  if (n < 2 || p < 1 || Z.nrow() != n || w.size() != n) {
+    Rcpp::stop("input dimensions do not match");
+  }
+  if (prepared_integer(target_prepared, "schema_version", "target_prepared") != 1 ||
+      prepared_integer(gene_geometry, "schema_version", "gene_geometry") != 1) {
+    Rcpp::stop("unsupported CRT-SPA preparation schema version");
+  }
+  if (prepared_integer(target_prepared, "n", "target_prepared") != n ||
+      prepared_integer(gene_geometry, "n", "gene_geometry") != n ||
+      prepared_integer(gene_geometry, "p", "gene_geometry") != p) {
+    Rcpp::stop("prepared CRT-SPA input dimensions do not match");
+  }
+  const Rcpp::NumericVector propensity = prepared_vector(
+      target_prepared, "propensity", n, "target_prepared");
+  const Rcpp::NumericVector offsets = prepared_vector(
+      target_prepared, "offsets", n, "target_prepared");
+  const Rcpp::NumericVector zero_probability = prepared_vector(
+      target_prepared, "zero_probability", n, "target_prepared");
+  const Rcpp::NumericVector zero_variance = prepared_vector(
+      target_prepared, "zero_variance", n, "target_prepared");
+  moments.all_propensities_interior = prepared_boolean(
+      target_prepared, "all_propensities_interior", "target_prepared");
+  const bool expected_intercept = prepared_boolean(
+      gene_geometry, "leading_intercept", "gene_geometry");
+  SEXP C_inv_sexp = prepared_field(gene_geometry, "C_inv", REALSXP, "gene_geometry");
+  if (!Rf_isMatrix(C_inv_sexp)) Rcpp::stop("gene_geometry C_inv must be a matrix");
+  const Rcpp::NumericMatrix C_inv(C_inv_sexp);
+  if (C_inv.nrow() != p || C_inv.ncol() != p) {
+    Rcpp::stop("gene_geometry C_inv dimensions do not match");
+  }
+
+  InfoCache cache;
+  cache.n = n;
+  cache.p = p;
+  cache.d = p + 1;
+  cache.score_sign = 1;
+  cache.use_prepared_kernels = true;
+  cache.information_invertible = prepared_boolean(
+      gene_geometry, "information_invertible", "gene_geometry");
+  cache.C_inv = Rcpp::as<MatrixXd>(C_inv);
+  if (cache.information_invertible && !cache.C_inv.allFinite()) {
+    Rcpp::stop("gene_geometry C_inv must be finite when information is invertible");
+  }
+  // Each row's score and all p weighted features are initialized below before
+  // its mixed moments are read. No zero fill or owned n-vector copies are needed.
+  cache.G.resize(n, p + 1);
+  cache.bind_prepared_arrays(offsets, propensity, w);
+  moments.moment = VectorXd::Zero(cache.d);
+  moments.Sgg = MatrixXd::Zero(cache.d, cache.d);
+  bool all_propensities_interior = true;
+  for (int i = 0; i < n; ++i) {
+    if (!std::isfinite(a[i])) Rcpp::stop("a must be finite");
+    if (!std::isfinite(w[i]) || w[i] <= 0.0) {
+      Rcpp::stop("w must be positive and finite");
+    }
+    if (!std::isfinite(propensity[i]) || propensity[i] < 0.0 ||
+        propensity[i] > 1.0) {
+      Rcpp::stop("propensity must be finite and lie in [0, 1]");
+    }
+    cache.G(i, 0) = a[i];
+    for (int j = 0; j < p; ++j) {
+      if (!std::isfinite(Z(i, j))) Rcpp::stop("Z must be finite");
+      const double weighted_z = w[i] * Z(i, j);
+      if (!std::isfinite(weighted_z)) {
+        Rcpp::stop("w multiplied by Z must be finite");
+      }
+      cache.G(i, j + 1) = weighted_z;
+    }
+    if (std::isnan(offsets[i]) || !std::isfinite(zero_probability[i]) ||
+        zero_probability[i] < 0.0 || zero_probability[i] > 1.0 ||
+        !std::isfinite(zero_variance[i]) || zero_variance[i] < 0.0 ||
+        zero_variance[i] > 0.25) {
+      Rcpp::stop("target_prepared contains invalid derived values");
+    }
+    if (std::abs(Z(i, 0) - 1.0) > 1e-10) cache.leading_intercept = false;
+    if (propensity[i] <= 0.0 || propensity[i] >= 1.0) {
+      all_propensities_interior = false;
+    }
+    const double pi = zero_probability[i];
+    const double h = zero_variance[i];
+    const double* g = cache.G.data() + i;
+    for (int j = 0; j < cache.d; ++j) {
+      const double gj = g[j * n];
+      moments.moment[j] += pi * gj;
+      for (int k = 0; k <= j; ++k) {
+        moments.Sgg(j, k) += h * gj * g[k * n];
+      }
+    }
+  }
+  if (cache.leading_intercept != expected_intercept) {
+    Rcpp::stop("gene_geometry does not match the intercept geometry of Z");
+  }
+  if (all_propensities_interior != moments.all_propensities_interior) {
+    Rcpp::stop("target_prepared has an inconsistent propensity interior flag");
+  }
+  symmetrize_lower(moments.Sgg);
+  return cache;
+}
+
 void validate_solver_controls(const double target,
                               const double tolerance,
                               const int max_iterations) {
@@ -514,7 +995,7 @@ Rcpp::List run_crt_full(const InfoCache& cache,
   VectorXd x = VectorXd::Zero(cache.d + 1);
   const std::vector<double> empty_history;
   Evaluation base = zero_evaluation == nullptr
-                        ? evaluate_crt_exact(cache, x, target)
+                        ? evaluate_crt_dispatch(cache, x, target)
                         : *zero_evaluation;
   if (!base.valid) {
     return failure_result(cache, "invalid_center", target, kNaN, 0, kNaN,
@@ -531,7 +1012,7 @@ Rcpp::List run_crt_full(const InfoCache& cache,
 
   x[cache.d] = (target - center) / variance;
   x.head(cache.d) = x[cache.d] * base.boundary.grad;
-  Evaluation current = evaluate_crt_exact(cache, x, target);
+  Evaluation current = evaluate_crt_dispatch(cache, x, target);
   std::vector<double> history;
   int updates = 0;
   bool converged = false;
@@ -554,7 +1035,7 @@ Rcpp::List run_crt_full(const InfoCache& cache,
         updates < minimum_updates && residual <= tolerance;
     for (int backtrack = 0; backtrack < 24; ++backtrack) {
       const VectorXd candidate = x + scale * step;
-      Evaluation trial = evaluate_crt_exact(cache, candidate, target);
+      Evaluation trial = evaluate_crt_dispatch(cache, candidate, target);
       const double trial_residual =
           trial.valid ? max_abs(trial.residual) : kNaN;
       if (trial.valid &&
@@ -614,6 +1095,49 @@ Rcpp::List cached_outward_failure(const InfoCache& cache,
   return cached_outward_result(
       out, std::isfinite(center) ? center : NA_REAL,
       std::isfinite(observed) ? observed : NA_REAL, score_sign);
+}
+
+Rcpp::List prepared_outward_result(Rcpp::List out,
+                                     const double base_center,
+                                     const double observed_target,
+                                     const int score_sign) {
+  out = cached_outward_result(out, base_center, observed_target, score_sign);
+  out["cache_strategy"] = "shared_preparation";
+  out["shared_preparation"] = true;
+  return out;
+}
+
+Rcpp::List prepared_outward_failure(const InfoCache& cache,
+                                      const std::string& reason,
+                                      const double target,
+                                      const double center,
+                                      const double observed,
+                                      const int score_sign,
+                                      const int exact_evaluations) {
+  Rcpp::List out = cached_outward_failure(
+      cache, reason, target, center, observed, score_sign, exact_evaluations);
+  out["cache_strategy"] = "shared_preparation";
+  out["shared_preparation"] = true;
+  return out;
+}
+
+Rcpp::List kernel_evaluation_diagnostics(const Evaluation& evaluation,
+                                         const double rate,
+                                         const Rcpp::NumericVector& cell_rate) {
+  return Rcpp::List::create(
+      Rcpp::Named("valid") = evaluation.valid,
+      Rcpp::Named("moment") = Rcpp::wrap(evaluation.moment),
+      Rcpp::Named("Sgg") = Rcpp::wrap(evaluation.Sgg),
+      Rcpp::Named("residual") = Rcpp::wrap(evaluation.residual),
+      Rcpp::Named("jacobian") = Rcpp::wrap(evaluation.jacobian),
+      Rcpp::Named("boundary") = Rcpp::List::create(
+          Rcpp::Named("valid") = evaluation.boundary.valid,
+          Rcpp::Named("V") = evaluation.boundary.V,
+          Rcpp::Named("b") = evaluation.boundary.b,
+          Rcpp::Named("grad") = Rcpp::wrap(evaluation.boundary.grad),
+          Rcpp::Named("hess") = Rcpp::wrap(evaluation.boundary.hess)),
+      Rcpp::Named("rate") = rate,
+      Rcpp::Named("cell_rate") = cell_rate);
 }
 
 }  // namespace
@@ -911,6 +1435,116 @@ Rcpp::List crt_spa_full_outward_cached(
   return cached_outward_result(out, base_center, observed, score_sign);
 }
 
+
+Rcpp::List crt_spa_full_outward_prepared(
+    const Rcpp::NumericVector& a,
+    const Rcpp::NumericVector& w,
+    const Rcpp::NumericMatrix& Z,
+    const Rcpp::List& target_prepared,
+    const Rcpp::List& gene_geometry,
+    const Rcpp::IntegerVector& treated_indices,
+    const double tolerance,
+    const int max_iterations) {
+  validate_solver_controls(0.0, tolerance, max_iterations);
+  ZeroMoments moments;
+  InfoCache cache = build_prepared_cache(
+      a, w, Z, target_prepared, gene_geometry, moments);
+  const double* weights = cache.weights_data();
+  std::vector<int> treated(treated_indices.size());
+  for (R_xlen_t j = 0; j < treated_indices.size(); ++j) {
+    if (treated_indices[j] == NA_INTEGER || treated_indices[j] < 1 ||
+        treated_indices[j] > cache.n) {
+      Rcpp::stop("treated_indices contains an invalid one-based index");
+    }
+    treated[j] = treated_indices[j] - 1;
+  }
+  std::vector<int> sorted_treated = treated;
+  std::sort(sorted_treated.begin(), sorted_treated.end());
+  if (std::adjacent_find(sorted_treated.begin(), sorted_treated.end()) !=
+      sorted_treated.end()) {
+    Rcpp::stop("treated_indices cannot contain duplicates");
+  }
+
+  double observed_U = 0.0;
+  double observed_weight = 0.0;
+  VectorXd observed_B = VectorXd::Zero(cache.p);
+  for (std::size_t j = 0; j < treated.size(); ++j) {
+    const int index = treated[j];
+    observed_U += cache.G(index, 0);
+    observed_weight += weights[index];
+    observed_B += cache.G.row(index).segment(1, cache.p).transpose();
+  }
+  const double projection = cache.information_invertible
+                                ? observed_B.dot(cache.C_inv * observed_B)
+                                : kNaN;
+  const double observed_information = observed_weight - projection;
+  const double information_scale =
+      std::max(std::abs(observed_weight), std::abs(projection));
+  const double observed =
+      std::isfinite(observed_U) && std::isfinite(observed_information) &&
+              std::isfinite(information_scale) && information_scale > 0.0 &&
+              observed_information > 1.0e-14 * information_scale
+          ? observed_U / std::sqrt(observed_information)
+          : kNaN;
+  if (!cache.information_invertible) {
+    return prepared_outward_failure(
+        cache, "singular_information_geometry", kNaN, kNaN, kNaN,
+        NA_INTEGER, 0);
+  }
+  if (!std::isfinite(observed)) {
+    return prepared_outward_failure(
+        cache, "invalid_observed_studentizer", kNaN, kNaN, kNaN,
+        NA_INTEGER, 0);
+  }
+  if (!cache.leading_intercept) {
+    return prepared_outward_failure(
+        cache, "unsupported_spa_geometry_no_intercept", observed, kNaN,
+        observed, NA_INTEGER, 0);
+  }
+  const Evaluation positive_base = evaluate_crt_zero(cache, moments, observed);
+  if (!positive_base.valid || !std::isfinite(positive_base.boundary.b)) {
+    return prepared_outward_failure(
+        cache, "invalid_center", observed, kNaN, observed, NA_INTEGER, 1);
+  }
+  const double base_center = positive_base.boundary.b;
+  if (!moments.all_propensities_interior) {
+    return prepared_outward_failure(
+        cache, "non_interior_propensity", observed, base_center,
+        observed, NA_INTEGER, 1);
+  }
+  const double displacement = observed - base_center;
+  if (displacement == 0.0) {
+    return prepared_outward_failure(
+        cache, "central_target_requires_empirical_fallback", observed,
+        base_center, observed, NA_INTEGER, 1);
+  }
+
+  const int score_sign = displacement > 0.0 ? 1 : -1;
+  const double target = static_cast<double>(score_sign) * observed;
+  cache.score_sign = score_sign;
+  if (score_sign == -1) {
+    // Reflect only the score coordinate. The nuisance geometry and its
+    // factorization are unchanged, so no second n-row cache is needed.
+    for (int i = 0; i < cache.n; ++i) cache.G(i, 0) = -cache.G(i, 0);
+    moments.moment[0] = -moments.moment[0];
+    for (int j = 1; j < cache.d; ++j) {
+      moments.Sgg(0, j) = -moments.Sgg(0, j);
+      moments.Sgg(j, 0) = -moments.Sgg(j, 0);
+    }
+  }
+  if (max_iterations == 0) {
+    Rcpp::List out = failure_result(
+        cache, "solver_disabled_max_iterations_zero", target,
+        static_cast<double>(score_sign) * base_center, 0, NA_REAL,
+        std::vector<double>(), VectorXd::Zero(cache.d + 1), 1);
+    return prepared_outward_result(out, base_center, observed, score_sign);
+  }
+  const Evaluation base = evaluate_crt_zero(cache, moments, target);
+  Rcpp::List out = run_crt_full(
+      cache, target, tolerance, max_iterations, 1, &base);
+  return prepared_outward_result(out, base_center, observed, score_sign);
+}
+
 }  // namespace sceptre
 
 // [[Rcpp::export]]
@@ -950,4 +1584,112 @@ Rcpp::List crt_spa_full_outward_cached_cpp(
     const int max_iterations = 50) {
   return sceptre::crt_spa_full_outward_cached(
       a, w, Z, propensity, treated_indices, tolerance, max_iterations);
+}
+
+// Internal run-local preparation. These R-owned lists can be serialized or
+// inherited by fork workers; the caller must not alter their derived values.
+// [[Rcpp::export]]
+Rcpp::List prepare_crt_spa_target_cpp(const Rcpp::NumericVector& propensity) {
+  return prepare_target(propensity);
+}
+
+// [[Rcpp::export]]
+Rcpp::List prepare_crt_spa_gene_geometry_cpp(
+    const Rcpp::NumericVector& w,
+    const Rcpp::NumericMatrix& Z) {
+  return prepare_gene_geometry(w, Z);
+}
+
+// [[Rcpp::export]]
+Rcpp::List crt_spa_full_outward_prepared_cpp(
+    const Rcpp::NumericVector& a,
+    const Rcpp::NumericVector& w,
+    const Rcpp::NumericMatrix& Z,
+    const Rcpp::List& target_prepared,
+    const Rcpp::List& gene_geometry,
+    const Rcpp::IntegerVector& treated_indices,
+    const double tolerance = 1e-4,
+    const int max_iterations = 50) {
+  return sceptre::crt_spa_full_outward_prepared(
+      a, w, Z, target_prepared, gene_geometry, treated_indices,
+      tolerance, max_iterations);
+}
+
+// Internal numerical audit of reference and prepared kernels at a supplied
+// state. This bypasses root selection so tests can examine extreme tilts,
+// endpoint propensities, individual KL terms, and full moment/Hessian arrays.
+// It is not a user-facing analysis method.
+// [[Rcpp::export]]
+Rcpp::List crt_spa_evaluate_kernels_cpp(
+    const Rcpp::NumericVector& a,
+    const Rcpp::NumericVector& w,
+    const Rcpp::NumericMatrix& Z,
+    const Rcpp::NumericVector& propensity,
+    const Rcpp::NumericVector& theta,
+    const double lambda = 0.0,
+    const double target = 0.0,
+    const int score_sign = 1,
+    Rcpp::Nullable<Rcpp::NumericVector> rate_theta = R_NilValue) {
+  const InfoCache cache = build_cache(
+      a, w, Z, propensity, score_sign, false, false);
+  if (theta.size() != cache.d) {
+    Rcpp::stop("theta must have one score and one coefficient per Z column");
+  }
+  VectorXd state(cache.d + 1);
+  for (int j = 0; j < cache.d; ++j) state[j] = theta[j];
+  state[cache.d] = lambda;
+  const VectorXd tilt_coefficients = state.head(cache.d);
+  VectorXd requested_rate_theta = tilt_coefficients;
+  if (rate_theta.isNotNull()) {
+    const Rcpp::NumericVector override_theta(rate_theta.get());
+    if (override_theta.size() != cache.d) {
+      Rcpp::stop("rate_theta must have one score and one coefficient per Z column");
+    }
+    for (int j = 0; j < cache.d; ++j) requested_rate_theta[j] = override_theta[j];
+  }
+  const Evaluation reference = evaluate_crt_exact(cache, state, target);
+  const Evaluation optimized = evaluate_crt_optimized(cache, state, target);
+  Rcpp::NumericVector reference_cell_rate(cache.n), optimized_cell_rate(cache.n);
+  const double* probabilities = cache.propensity_data();
+  for (int i = 0; i < cache.n; ++i) {
+    const double* g = cache.G.data() + i;
+    double tilt = 0.0;
+    for (int j = 0; j < cache.d; ++j) {
+      tilt += tilt_coefficients[j] * g[j * cache.n];
+    }
+    reference_cell_rate[i] = bernoulli_kl_from_tilt(probabilities[i], tilt);
+    optimized_cell_rate[i] = bernoulli_kl_from_tilt_optimized(probabilities[i], tilt);
+  }
+  bool used_retained_rate = false;
+  const double retained_rate = select_prepared_crt_rate(
+      cache, optimized, requested_rate_theta, &used_retained_rate);
+  const double recomputed_rate = crt_rate_optimized(cache, requested_rate_theta);
+  Rcpp::NumericVector retained_cell_rate(cache.n), recomputed_cell_rate(cache.n);
+  for (int i = 0; i < cache.n; ++i) {
+    const double* g = cache.G.data() + i;
+    double tilt = 0.0;
+    for (int j = 0; j < cache.d; ++j) {
+      tilt += requested_rate_theta[j] * g[j * cache.n];
+    }
+    recomputed_cell_rate[i] = bernoulli_kl_from_tilt_optimized(probabilities[i], tilt);
+    // The unselected branch is not evaluated: an incomplete retained buffer
+    // must never be read or exported, including in this diagnostic.
+    const double selected_tilt = used_retained_rate ? optimized.retained_tilts[i] : tilt;
+    retained_cell_rate[i] = bernoulli_kl_from_tilt_optimized(probabilities[i], selected_tilt);
+  }
+  return Rcpp::List::create(
+      Rcpp::Named("reference") = kernel_evaluation_diagnostics(
+          reference, crt_rate(cache, tilt_coefficients), reference_cell_rate),
+      Rcpp::Named("optimized") = kernel_evaluation_diagnostics(
+          optimized, crt_rate_optimized(cache, tilt_coefficients), optimized_cell_rate),
+      Rcpp::Named("optimized_d7") = cache.d == 7,
+      Rcpp::Named("retained") = Rcpp::List::create(
+          Rcpp::Named("rate") = retained_rate,
+          Rcpp::Named("recomputed_rate") = recomputed_rate,
+          Rcpp::Named("cell_rate") = retained_cell_rate,
+          Rcpp::Named("recomputed_cell_rate") = recomputed_cell_rate,
+          Rcpp::Named("n_tilts_stored") =
+              optimized.retained_tilts_complete ? cache.n : 0,
+          Rcpp::Named("n_tilts_reused") = used_retained_rate ? cache.n : 0,
+          Rcpp::Named("used_retained_rate") = used_retained_rate));
 }

@@ -1,6 +1,11 @@
-prepare_grna_design_timed <- function(covariate_matrix) {
+prepare_grna_design_timed <- function(
+    covariate_matrix, grna_fit_method = "fast_logistic") {
   started <- proc.time()
-  design <- prepare_grna_logistic_design(covariate_matrix)
+  design <- if (identical(grna_fit_method, "pysceptre")) {
+    prepare_pysceptre_glm_design(covariate_matrix)
+  } else {
+    prepare_grna_logistic_design(covariate_matrix)
+  }
   duration <- proc.time() - started
   list(
     design = design,
@@ -14,8 +19,8 @@ fit_grna_with_diagnostics <- function(
     trt_idxs, covariate_matrix, grna_group, grna_fit_method,
     prepared_design = NULL) {
   preparation_cpu <- preparation_elapsed <- 0
-  if (identical(grna_fit_method, "fast_logistic") && is.null(prepared_design)) {
-    preparation <- prepare_grna_design_timed(covariate_matrix)
+  if (grna_fit_method %in% c("fast_logistic", "pysceptre") && is.null(prepared_design)) {
+    preparation <- prepare_grna_design_timed(covariate_matrix, grna_fit_method)
     prepared_design <- preparation$design
     preparation_cpu <- preparation$cpu_seconds
     preparation_elapsed <- preparation$elapsed_seconds
@@ -54,8 +59,13 @@ add_grna_phase_timings <- function(
   phase_timings$grna_fit_method <- grna_fit_method
   phase_timings$n_grna_fits <- nrow(diagnostics)
   phase_timings$n_fast_grna_fits <- sum(diagnostics$method_used == "fast_logistic")
+  phase_timings$n_pysceptre_grna_fits <- sum(diagnostics$method_used == "pysceptre")
+  phase_timings$n_optimized_grna_fits <- sum(
+    diagnostics$method_used %in% c("fast_logistic", "pysceptre")
+  )
   phase_timings$n_grna_fit_fallbacks <- sum(
-    diagnostics$method_requested == "fast_logistic" & diagnostics$method_used == "glm.fit"
+    diagnostics$method_requested %in% c("fast_logistic", "pysceptre") &
+      diagnostics$method_used == "glm.fit"
   )
   phase_timings$grna_preparation_scope <- if (grna_fit_method == "glm.fit") {
     "not_required"

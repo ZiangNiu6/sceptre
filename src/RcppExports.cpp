@@ -156,6 +156,66 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// prepare_crt_spa_target_cpp
+Rcpp::List prepare_crt_spa_target_cpp(const Rcpp::NumericVector& propensity);
+RcppExport SEXP _sceptre_prepare_crt_spa_target_cpp(SEXP propensitySEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const Rcpp::NumericVector& >::type propensity(propensitySEXP);
+    rcpp_result_gen = Rcpp::wrap(prepare_crt_spa_target_cpp(propensity));
+    return rcpp_result_gen;
+END_RCPP
+}
+// prepare_crt_spa_gene_geometry_cpp
+Rcpp::List prepare_crt_spa_gene_geometry_cpp(const Rcpp::NumericVector& w, const Rcpp::NumericMatrix& Z);
+RcppExport SEXP _sceptre_prepare_crt_spa_gene_geometry_cpp(SEXP wSEXP, SEXP ZSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const Rcpp::NumericVector& >::type w(wSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::NumericMatrix& >::type Z(ZSEXP);
+    rcpp_result_gen = Rcpp::wrap(prepare_crt_spa_gene_geometry_cpp(w, Z));
+    return rcpp_result_gen;
+END_RCPP
+}
+// crt_spa_full_outward_prepared_cpp
+Rcpp::List crt_spa_full_outward_prepared_cpp(const Rcpp::NumericVector& a, const Rcpp::NumericVector& w, const Rcpp::NumericMatrix& Z, const Rcpp::List& target_prepared, const Rcpp::List& gene_geometry, const Rcpp::IntegerVector& treated_indices, const double tolerance, const int max_iterations);
+RcppExport SEXP _sceptre_crt_spa_full_outward_prepared_cpp(SEXP aSEXP, SEXP wSEXP, SEXP ZSEXP, SEXP target_preparedSEXP, SEXP gene_geometrySEXP, SEXP treated_indicesSEXP, SEXP toleranceSEXP, SEXP max_iterationsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const Rcpp::NumericVector& >::type a(aSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::NumericVector& >::type w(wSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::NumericMatrix& >::type Z(ZSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::List& >::type target_prepared(target_preparedSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::List& >::type gene_geometry(gene_geometrySEXP);
+    Rcpp::traits::input_parameter< const Rcpp::IntegerVector& >::type treated_indices(treated_indicesSEXP);
+    Rcpp::traits::input_parameter< const double >::type tolerance(toleranceSEXP);
+    Rcpp::traits::input_parameter< const int >::type max_iterations(max_iterationsSEXP);
+    rcpp_result_gen = Rcpp::wrap(crt_spa_full_outward_prepared_cpp(a, w, Z, target_prepared, gene_geometry, treated_indices, tolerance, max_iterations));
+    return rcpp_result_gen;
+END_RCPP
+}
+// crt_spa_evaluate_kernels_cpp
+Rcpp::List crt_spa_evaluate_kernels_cpp(const Rcpp::NumericVector& a, const Rcpp::NumericVector& w, const Rcpp::NumericMatrix& Z, const Rcpp::NumericVector& propensity, const Rcpp::NumericVector& theta, const double lambda, const double target, const int score_sign, Rcpp::Nullable<Rcpp::NumericVector> rate_theta);
+RcppExport SEXP _sceptre_crt_spa_evaluate_kernels_cpp(SEXP aSEXP, SEXP wSEXP, SEXP ZSEXP, SEXP propensitySEXP, SEXP thetaSEXP, SEXP lambdaSEXP, SEXP targetSEXP, SEXP score_signSEXP, SEXP rate_thetaSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const Rcpp::NumericVector& >::type a(aSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::NumericVector& >::type w(wSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::NumericMatrix& >::type Z(ZSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::NumericVector& >::type propensity(propensitySEXP);
+    Rcpp::traits::input_parameter< const Rcpp::NumericVector& >::type theta(thetaSEXP);
+    Rcpp::traits::input_parameter< const double >::type lambda(lambdaSEXP);
+    Rcpp::traits::input_parameter< const double >::type target(targetSEXP);
+    Rcpp::traits::input_parameter< const int >::type score_sign(score_signSEXP);
+    Rcpp::traits::input_parameter< Rcpp::Nullable<Rcpp::NumericVector> >::type rate_theta(rate_thetaSEXP);
+    rcpp_result_gen = Rcpp::wrap(crt_spa_evaluate_kernels_cpp(a, w, Z, propensity, theta, lambda, target, score_sign, rate_theta));
+    return rcpp_result_gen;
+END_RCPP
+}
 // crt_spa_full_fast_cpp
 Rcpp::List crt_spa_full_fast_cpp(const Rcpp::NumericVector& a, const Rcpp::NumericVector& w, const Rcpp::NumericVector& y, const Rcpp::NumericMatrix& Z, const Rcpp::NumericVector& propensity, const double target, const int score_sign, const double tolerance, const int max_iterations);
 RcppExport SEXP _sceptre_crt_spa_full_fast_cpp(SEXP aSEXP, SEXP wSEXP, SEXP ySEXP, SEXP ZSEXP, SEXP propensitySEXP, SEXP targetSEXP, SEXP score_signSEXP, SEXP toleranceSEXP, SEXP max_iterationsSEXP) {
@@ -318,6 +378,29 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< int >::type max_iterations(max_iterationsSEXP);
     Rcpp::traits::input_parameter< bool >::type use_fast(use_fastSEXP);
     rcpp_result_gen = Rcpp::wrap(run_low_level_test_full_crt_spa_always_v1(y, mu, a, w, Z, fitted_probabilities, trt_idxs, n_trt, side_code, max_iterations, use_fast));
+    return rcpp_result_gen;
+END_RCPP
+}
+// run_low_level_test_full_crt_spa_always_prepared_v1
+SEXP run_low_level_test_full_crt_spa_always_prepared_v1(NumericVector y, NumericVector mu, NumericVector a, NumericVector w, NumericMatrix Z, NumericVector fitted_probabilities, IntegerVector trt_idxs, int n_trt, int side_code, List target_prepared, List gene_geometry, int max_iterations, bool use_fast);
+RcppExport SEXP _sceptre_run_low_level_test_full_crt_spa_always_prepared_v1(SEXP ySEXP, SEXP muSEXP, SEXP aSEXP, SEXP wSEXP, SEXP ZSEXP, SEXP fitted_probabilitiesSEXP, SEXP trt_idxsSEXP, SEXP n_trtSEXP, SEXP side_codeSEXP, SEXP target_preparedSEXP, SEXP gene_geometrySEXP, SEXP max_iterationsSEXP, SEXP use_fastSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type y(ySEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type mu(muSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type a(aSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type w(wSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type Z(ZSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type fitted_probabilities(fitted_probabilitiesSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type trt_idxs(trt_idxsSEXP);
+    Rcpp::traits::input_parameter< int >::type n_trt(n_trtSEXP);
+    Rcpp::traits::input_parameter< int >::type side_code(side_codeSEXP);
+    Rcpp::traits::input_parameter< List >::type target_prepared(target_preparedSEXP);
+    Rcpp::traits::input_parameter< List >::type gene_geometry(gene_geometrySEXP);
+    Rcpp::traits::input_parameter< int >::type max_iterations(max_iterationsSEXP);
+    Rcpp::traits::input_parameter< bool >::type use_fast(use_fastSEXP);
+    rcpp_result_gen = Rcpp::wrap(run_low_level_test_full_crt_spa_always_prepared_v1(y, mu, a, w, Z, fitted_probabilities, trt_idxs, n_trt, side_code, target_prepared, gene_geometry, max_iterations, use_fast));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -652,6 +735,32 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// prepare_pysceptre_design_cpp
+Rcpp::List prepare_pysceptre_design_cpp(const Rcpp::NumericMatrix& Z);
+RcppExport SEXP _sceptre_prepare_pysceptre_design_cpp(SEXP ZSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const Rcpp::NumericMatrix& >::type Z(ZSEXP);
+    rcpp_result_gen = Rcpp::wrap(prepare_pysceptre_design_cpp(Z));
+    return rcpp_result_gen;
+END_RCPP
+}
+// fit_pysceptre_glm_cpp
+Rcpp::List fit_pysceptre_glm_cpp(const Rcpp::List& prepared, const Rcpp::NumericVector& response, const std::string& family, const double tolerance, const int max_iterations);
+RcppExport SEXP _sceptre_fit_pysceptre_glm_cpp(SEXP preparedSEXP, SEXP responseSEXP, SEXP familySEXP, SEXP toleranceSEXP, SEXP max_iterationsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const Rcpp::List& >::type prepared(preparedSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::NumericVector& >::type response(responseSEXP);
+    Rcpp::traits::input_parameter< const std::string& >::type family(familySEXP);
+    Rcpp::traits::input_parameter< const double >::type tolerance(toleranceSEXP);
+    Rcpp::traits::input_parameter< const int >::type max_iterations(max_iterationsSEXP);
+    rcpp_result_gen = Rcpp::wrap(fit_pysceptre_glm_cpp(prepared, response, family, tolerance, max_iterations));
+    return rcpp_result_gen;
+END_RCPP
+}
 // rpt_spa_full_cpp
 Rcpp::List rpt_spa_full_cpp(const Rcpp::NumericVector& a, const Rcpp::NumericVector& w, const Rcpp::NumericMatrix& Z, const int m, const double target, const int score_sign, const double tolerance, const int max_iterations);
 RcppExport SEXP _sceptre_rpt_spa_full_cpp(SEXP aSEXP, SEXP wSEXP, SEXP ZSEXP, SEXP mSEXP, SEXP targetSEXP, SEXP score_signSEXP, SEXP toleranceSEXP, SEXP max_iterationsSEXP) {
@@ -922,6 +1031,10 @@ static const R_CallMethodDef CallEntries[] = {
     {"_sceptre_crt_spa_full_cpp", (DL_FUNC) &_sceptre_crt_spa_full_cpp, 8},
     {"_sceptre_crt_spa_full_cached_cpp", (DL_FUNC) &_sceptre_crt_spa_full_cached_cpp, 8},
     {"_sceptre_crt_spa_full_outward_cached_cpp", (DL_FUNC) &_sceptre_crt_spa_full_outward_cached_cpp, 7},
+    {"_sceptre_prepare_crt_spa_target_cpp", (DL_FUNC) &_sceptre_prepare_crt_spa_target_cpp, 1},
+    {"_sceptre_prepare_crt_spa_gene_geometry_cpp", (DL_FUNC) &_sceptre_prepare_crt_spa_gene_geometry_cpp, 2},
+    {"_sceptre_crt_spa_full_outward_prepared_cpp", (DL_FUNC) &_sceptre_crt_spa_full_outward_prepared_cpp, 8},
+    {"_sceptre_crt_spa_evaluate_kernels_cpp", (DL_FUNC) &_sceptre_crt_spa_evaluate_kernels_cpp, 9},
     {"_sceptre_crt_spa_full_fast_cpp", (DL_FUNC) &_sceptre_crt_spa_full_fast_cpp, 9},
     {"_sceptre_crt_spa_full_outward_fast_cpp", (DL_FUNC) &_sceptre_crt_spa_full_outward_fast_cpp, 8},
     {"_sceptre_fisher_yates_samlper", (DL_FUNC) &_sceptre_fisher_yates_samlper, 3},
@@ -932,6 +1045,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_sceptre_fit_grna_logistic_prepared_cpp", (DL_FUNC) &_sceptre_fit_grna_logistic_prepared_cpp, 7},
     {"_sceptre_run_low_level_test_full_crt_spa_v1", (DL_FUNC) &_sceptre_run_low_level_test_full_crt_spa_v1, 16},
     {"_sceptre_run_low_level_test_full_crt_spa_always_v1", (DL_FUNC) &_sceptre_run_low_level_test_full_crt_spa_always_v1, 11},
+    {"_sceptre_run_low_level_test_full_crt_spa_always_prepared_v1", (DL_FUNC) &_sceptre_run_low_level_test_full_crt_spa_always_prepared_v1, 13},
     {"_sceptre_finalize_low_level_test_crt_spa_fallback_v1", (DL_FUNC) &_sceptre_finalize_low_level_test_crt_spa_fallback_v1, 8},
     {"_sceptre_compute_observed_empirical_crt_statistic_v1", (DL_FUNC) &_sceptre_compute_observed_empirical_crt_statistic_v1, 3},
     {"_sceptre_compute_null_empirical_crt_statistics_v1", (DL_FUNC) &_sceptre_compute_null_empirical_crt_statistics_v1, 5},
@@ -951,6 +1065,8 @@ static const R_CallMethodDef CallEntries[] = {
     {"_sceptre_compute_n_trt_cells_matrix", (DL_FUNC) &_sceptre_compute_n_trt_cells_matrix, 7},
     {"_sceptre_compute_genes_within_distance", (DL_FUNC) &_sceptre_compute_genes_within_distance, 3},
     {"_sceptre_compute_nt_nonzero_matrix_and_n_ok_pairs_v3", (DL_FUNC) &_sceptre_compute_nt_nonzero_matrix_and_n_ok_pairs_v3, 11},
+    {"_sceptre_prepare_pysceptre_design_cpp", (DL_FUNC) &_sceptre_prepare_pysceptre_design_cpp, 1},
+    {"_sceptre_fit_pysceptre_glm_cpp", (DL_FUNC) &_sceptre_fit_pysceptre_glm_cpp, 5},
     {"_sceptre_rpt_spa_full_cpp", (DL_FUNC) &_sceptre_rpt_spa_full_cpp, 8},
     {"_sceptre_prepare_rpt_spa_response_cpp", (DL_FUNC) &_sceptre_prepare_rpt_spa_response_cpp, 6},
     {"_sceptre_release_rpt_spa_response_cpp", (DL_FUNC) &_sceptre_release_rpt_spa_response_cpp, 1},

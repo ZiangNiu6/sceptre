@@ -41,6 +41,22 @@ crt_spa_full_outward_cached_cpp <- function(a, w, Z, propensity, treated_indices
     .Call(`_sceptre_crt_spa_full_outward_cached_cpp`, a, w, Z, propensity, treated_indices, tolerance, max_iterations)
 }
 
+prepare_crt_spa_target_cpp <- function(propensity) {
+    .Call(`_sceptre_prepare_crt_spa_target_cpp`, propensity)
+}
+
+prepare_crt_spa_gene_geometry_cpp <- function(w, Z) {
+    .Call(`_sceptre_prepare_crt_spa_gene_geometry_cpp`, w, Z)
+}
+
+crt_spa_full_outward_prepared_cpp <- function(a, w, Z, target_prepared, gene_geometry, treated_indices, tolerance = 1e-4, max_iterations = 50L) {
+    .Call(`_sceptre_crt_spa_full_outward_prepared_cpp`, a, w, Z, target_prepared, gene_geometry, treated_indices, tolerance, max_iterations)
+}
+
+crt_spa_evaluate_kernels_cpp <- function(a, w, Z, propensity, theta, lambda = 0.0, target = 0.0, score_sign = 1L, rate_theta = NULL) {
+    .Call(`_sceptre_crt_spa_evaluate_kernels_cpp`, a, w, Z, propensity, theta, lambda, target, score_sign, rate_theta)
+}
+
 crt_spa_full_fast_cpp <- function(a, w, y, Z, propensity, target, score_sign = 1L, tolerance = 1e-4, max_iterations = 50L) {
     .Call(`_sceptre_crt_spa_full_fast_cpp`, a, w, y, Z, propensity, target, score_sign, tolerance, max_iterations)
 }
@@ -92,6 +108,10 @@ run_low_level_test_full_crt_spa_v1 <- function(y, mu, a, w, D, Z, fitted_probabi
 
 run_low_level_test_full_crt_spa_always_v1 <- function(y, mu, a, w, Z, fitted_probabilities, trt_idxs, n_trt, side_code, max_iterations = 50L, use_fast = FALSE) {
     .Call(`_sceptre_run_low_level_test_full_crt_spa_always_v1`, y, mu, a, w, Z, fitted_probabilities, trt_idxs, n_trt, side_code, max_iterations, use_fast)
+}
+
+run_low_level_test_full_crt_spa_always_prepared_v1 <- function(y, mu, a, w, Z, fitted_probabilities, trt_idxs, n_trt, side_code, target_prepared, gene_geometry, max_iterations = 50L, use_fast = TRUE) {
+    .Call(`_sceptre_run_low_level_test_full_crt_spa_always_prepared_v1`, y, mu, a, w, Z, fitted_probabilities, trt_idxs, n_trt, side_code, target_prepared, gene_geometry, max_iterations, use_fast)
 }
 
 finalize_low_level_test_crt_spa_fallback_v1 <- function(a, w, Z, synthetic_idxs, B2, return_resampling_dist, side_code, spa_attempt_result) {
@@ -168,6 +188,14 @@ compute_genes_within_distance <- function(midpoint, gene_tss_posits, distance_th
 
 compute_nt_nonzero_matrix_and_n_ok_pairs_v3 <- function(j, p, n_cells_orig, n_cells_sub, grna_group_idxs, indiv_nt_grna_idxs, all_nt_idxs, to_analyze_response_idxs, to_analyze_grna_idxs, control_group_complement, cells_in_use) {
     .Call(`_sceptre_compute_nt_nonzero_matrix_and_n_ok_pairs_v3`, j, p, n_cells_orig, n_cells_sub, grna_group_idxs, indiv_nt_grna_idxs, all_nt_idxs, to_analyze_response_idxs, to_analyze_grna_idxs, control_group_complement, cells_in_use)
+}
+
+prepare_pysceptre_design_cpp <- function(Z) {
+    .Call(`_sceptre_prepare_pysceptre_design_cpp`, Z)
+}
+
+fit_pysceptre_glm_cpp <- function(prepared, response, family = "poisson", tolerance = 1e-8, max_iterations = 25L) {
+    .Call(`_sceptre_fit_pysceptre_glm_cpp`, prepared, response, family, tolerance, max_iterations)
 }
 
 rpt_spa_full_cpp <- function(a, w, Z, m, target, score_sign = 1L, tolerance = 1e-4, max_iterations = 50L) {

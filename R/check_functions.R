@@ -239,8 +239,8 @@ check_set_analysis_parameters <- function(sceptre_object, formula_object, respon
   # 12. verify the response model fitting method and its optional dependency
   if (!is.character(response_fit_method) || length(response_fit_method) != 1L ||
       is.na(response_fit_method) ||
-      !(response_fit_method %in% c("sceptre", "glmGamPoi"))) {
-    stop("`response_fit_method` must be a single string, either 'sceptre' or 'glmGamPoi'.")
+      !(response_fit_method %in% c("sceptre", "glmGamPoi", "pysceptre"))) {
+    stop("`response_fit_method` must be a single string, either 'sceptre' or 'glmGamPoi', or 'pysceptre'.")
   }
   if (identical(response_fit_method, "glmGamPoi")) {
     if (!requireNamespace("glmGamPoi", quietly = TRUE)) {
@@ -261,10 +261,10 @@ check_set_analysis_parameters <- function(sceptre_object, formula_object, respon
   # 13. verify the gRNA assignment model fitting method
   if (!is.character(grna_fit_method) || length(grna_fit_method) != 1L ||
       is.na(grna_fit_method) ||
-      !(grna_fit_method %in% c("glm.fit", "fast_logistic"))) {
+      !(grna_fit_method %in% c("glm.fit", "fast_logistic", "pysceptre"))) {
     stop(
       "`grna_fit_method` must be a single string, either 'glm.fit' or ",
-      "'fast_logistic'."
+      "'fast_logistic', or 'pysceptre'."
     )
   }
 

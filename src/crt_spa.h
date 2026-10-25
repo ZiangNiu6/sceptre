@@ -49,6 +49,20 @@ Rcpp::List crt_spa_full_outward_cached(
     double tolerance = 1e-4,
     int max_iterations = 50);
 
+// Exact counterpart with run-local, serializable target and gene preparation.
+// The target preparation contains the original propensities and their exact
+// logit/expit round trip. Gene preparation contains only the small information
+// geometry; pair-specific features and mixed moments remain local to this call.
+Rcpp::List crt_spa_full_outward_prepared(
+    const Rcpp::NumericVector& a,
+    const Rcpp::NumericVector& w,
+    const Rcpp::NumericMatrix& Z,
+    const Rcpp::List& target_prepared,
+    const Rcpp::List& gene_geometry,
+    const Rcpp::IntegerVector& treated_indices,
+    double tolerance = 1e-4,
+    int max_iterations = 50);
+
 }  // namespace sceptre
 
 #endif  // SCEPTRE_CRT_SPA_H
